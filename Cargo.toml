@@ -1,0 +1,30 @@
+[package]
+name = "batako"
+version = "0.1.0"
+edition = "2021"
+
+[profile.dev]
+opt-level = 1
+
+[dependencies]
+
+vulkano = { version = "0.33", features = ["serde"] }
+vulkano-shaders = "0.33"
+winit = "0.28"
+vulkano-win = "0.33"
+vulkano-util = "0.33"
+
+bytemuck = "1.14.0"
+smallvec = "1.0"
+cgmath = "0.18"
+glium = "0.32.1"
+png = "0.17"
+rand = "0.8.4"
+ron = "0.8"
+serde = { version = "1.0", features = ["derive"] }
+
+# Glium has still not been updated to the latest winit version
+winit_glium = { package = "winit", version = "0.27.1"}
+
+[build-dependencies]
+shaderc = "0.8.3"

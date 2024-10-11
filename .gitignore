@@ -1,0 +1,4 @@
+/target
+/shaders/*.vert
+/shaders/*.frag
+src/graphics/shaders.rs
