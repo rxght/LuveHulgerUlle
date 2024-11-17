@@ -7,7 +7,7 @@ pub struct VertexShader {
 }
 
 impl Bindable for VertexShader {
-    fn bind_to_pipeline(&self, builder: &mut PipelineBuilder, _index_count: &mut u32) {
+    fn bind_to_pipeline(&self, builder: &mut PipelineBuilder) {
         builder.vertex_shader = Some(self.module.clone());
     }
 }
@@ -23,7 +23,7 @@ pub struct FragmentShader {
 }
 
 impl Bindable for FragmentShader {
-    fn bind_to_pipeline(&self, builder: &mut PipelineBuilder, _index_count: &mut u32) {
+    fn bind_to_pipeline(&self, builder: &mut PipelineBuilder) {
         builder.fragment_shader = Some(self.module.clone());
     }
 }

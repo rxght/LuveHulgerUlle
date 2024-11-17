@@ -352,17 +352,19 @@ impl Graphics {
         self.inflight_index = (self.inflight_index + 1) % IN_FLIGHT_COUNT as u32;
     }
 
-    pub fn register_drawable(&mut self, drawable_entry: &mut DrawableEntry) {
-        if drawable_entry.registered_uid.is_some() {
+    pub fn register_drawable(&mut self, drawable_entry: &DrawableEntry) {
+        if drawable_entry.registered_uid.get().is_some() {
             return;
         }
 
-        drawable_entry.registered_uid = Some(self.registered_drawables.len() as u32);
+        drawable_entry
+            .registered_uid
+            .set(Some(self.registered_drawables.len() as u32));
         self.registered_drawables.push(drawable_entry.get_weak());
     }
 
-    pub fn unregister_drawable(&mut self, drawable_entry: &mut DrawableEntry) {
-        match drawable_entry.registered_uid {
+    pub fn unregister_drawable(&mut self, drawable_entry: &DrawableEntry) {
+        match drawable_entry.registered_uid.get() {
             Some(idx) => match self.registered_drawables.get_mut(idx as usize) {
                 Some(weak) => *weak = Weak::new(),
                 None => _ = dbg!("[WARN] Tried to unregister an entry that was out of bounds."),

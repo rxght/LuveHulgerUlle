@@ -159,7 +159,7 @@ impl<T> Bindable for UniformBufferBinding<T>
 where
     T: BufferContents + Clone,
 {
-    fn bind_to_pipeline(&self, builder: &mut PipelineBuilder, _index_count: &mut u32) {
+    fn bind_to_pipeline(&self, builder: &mut PipelineBuilder) {
         builder.add_descriptor_set_layout(self.set_num, self.uniform_buffer_ref.layout.clone());
     }
     fn bind(

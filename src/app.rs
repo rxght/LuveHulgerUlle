@@ -1,154 +1,80 @@
-use crate::drawables::tiles::AnimatedTile;
-use crate::drawables::tiles::AnimatedTileDesc;
-use crate::drawables::tiles::StaticTileGroup;
+use winit::dpi::PhysicalSize;
+
+use crate::drawables::tiles::TileMap;
 use crate::drawables::tiles::TileSet;
+use crate::drawables::Square;
+use crate::drawables::SquareDesc;
 use crate::graphics::camera::Camera;
 use crate::graphics::Graphics;
 use crate::input::Input;
+use crate::ui::ui_square::UiSquare;
+use crate::ui::Ui;
+use crate::ui::UiLayout;
+use crate::ui::UiScene;
+use crate::ui::UiUnit;
 use std::sync::Arc;
-
-mod ui;
 
 pub struct App {
     input: Arc<Input>,
     tile_set: Arc<TileSet>,
-    tile_map: StaticTileGroup,
-    animated_tiles: Vec<AnimatedTile>,
+    tile_map: TileMap,
     last_frame_change: std::time::Instant,
     camera: Camera,
+    main_ui_scene: Arc<UiScene>,
+    ui: Arc<Ui>,
 }
 
 impl App {
-    pub fn new(gfx: &mut Graphics, input: Arc<Input>) -> Self {
-        let tile_set = TileSet::new(gfx, "textures/tile_sheet2.png", 16);
+    pub fn new(gfx: &mut Graphics, input: Arc<Input>, ui: Arc<Ui>) -> Self {
+        let tile_set = TileSet::new(gfx, "assets/textures/tileset_1.png", 16);
 
         let camera = Camera::new(gfx, [0.0, 0.0], 1.0, 0.0);
 
-        let tile_map = StaticTileGroup::new(
-            gfx,
-            tile_set.clone(),
-            [8, 5],
-            [
-                5, 2, 3, 4, 23, 0, 0, 0, 0, 7, 8, 9, 0, 23, 0, 0, 0, 12, 13, 14, 6, 0, 5, 0, 0, 23,
-                18, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5,
-            ]
-            .into_iter()
-            .map(|elem| Some(elem))
-            .collect(),
-            64.0,
-            &camera,
-        );
+        let tile_map = TileMap::new(gfx, "assets/tilemaps/bigmap.tmx", tile_set.clone(), &camera);
 
-        let animated_tile_set = TileSet::new(gfx, "textures/3x3_vatten_test.png", 16);
-        let animated_tiles = vec![
-            AnimatedTile::new(
-                gfx,
-                animated_tile_set.clone(),
-                AnimatedTileDesc {
-                    tile_position: [1, 0],
-                    first_sprite_idx: 0,
-                    frame_stride: 3,
-                },
-                64.0,
-                &camera,
-            ),
-            AnimatedTile::new(
-                gfx,
-                animated_tile_set.clone(),
-                AnimatedTileDesc {
-                    tile_position: [2, 0],
-                    first_sprite_idx: 1,
-                    frame_stride: 3,
-                },
-                64.0,
-                &camera,
-            ),
-            AnimatedTile::new(
-                gfx,
-                animated_tile_set.clone(),
-                AnimatedTileDesc {
-                    tile_position: [3, 0],
-                    first_sprite_idx: 2,
-                    frame_stride: 3,
-                },
-                64.0,
-                &camera,
-            ),
-            AnimatedTile::new(
-                gfx,
-                animated_tile_set.clone(),
-                AnimatedTileDesc {
-                    tile_position: [1, 1],
-                    first_sprite_idx: 24,
-                    frame_stride: 3,
-                },
-                64.0,
-                &camera,
-            ),
-            AnimatedTile::new(
-                gfx,
-                animated_tile_set.clone(),
-                AnimatedTileDesc {
-                    tile_position: [2, 1],
-                    first_sprite_idx: 25,
-                    frame_stride: 3,
-                },
-                64.0,
-                &camera,
-            ),
-            AnimatedTile::new(
-                gfx,
-                animated_tile_set.clone(),
-                AnimatedTileDesc {
-                    tile_position: [3, 1],
-                    first_sprite_idx: 26,
-                    frame_stride: 3,
-                },
-                64.0,
-                &camera,
-            ),
-            AnimatedTile::new(
-                gfx,
-                animated_tile_set.clone(),
-                AnimatedTileDesc {
-                    tile_position: [1, 2],
-                    first_sprite_idx: 48,
-                    frame_stride: 3,
-                },
-                64.0,
-                &camera,
-            ),
-            AnimatedTile::new(
-                gfx,
-                animated_tile_set.clone(),
-                AnimatedTileDesc {
-                    tile_position: [2, 2],
-                    first_sprite_idx: 49,
-                    frame_stride: 3,
-                },
-                64.0,
-                &camera,
-            ),
-            AnimatedTile::new(
-                gfx,
-                animated_tile_set.clone(),
-                AnimatedTileDesc {
-                    tile_position: [3, 2],
-                    first_sprite_idx: 50,
-                    frame_stride: 3,
-                },
-                64.0,
-                &camera,
-            ),
-        ];
+        tile_map
+            .layers
+            .iter()
+            .for_each(|p| gfx.register_drawable(p));
+
+        let main_ui_scene = UiScene(vec![UiSquare::new(
+            gfx,
+            [0.7, 0.72, 0.75, 1.0],
+            UiLayout {
+                x: UiUnit::Combined(50.0, -500.0),
+                y: UiUnit::Percentage(0.0),
+                width: UiUnit::Pixels(1000.0),
+                height: UiUnit::Pixels(64.0),
+            },
+        )]);
+
+        let main_ui_scene = Arc::new(main_ui_scene);
+
+        gfx.get_window().set_inner_size(PhysicalSize {
+            width: 1200,
+            height: 800,
+        });
+        ui.set_scene(gfx, main_ui_scene.clone());
+
+        let mut tile_cursor = Square::new(
+            gfx,
+            SquareDesc {
+                pos: [0, 0],
+                width: 64,
+                height: 64,
+            },
+            [1.0, 1.0, 1.0, 0.3],
+        );
+        gfx.register_drawable(&mut tile_cursor.drawable_entry);
 
         Self {
-            input: input,
-            tile_set: tile_set,
-            tile_map: tile_map,
-            animated_tiles: animated_tiles,
+            input,
+            tile_set,
+            tile_map,
             last_frame_change: std::time::Instant::now(),
-            camera: camera,
+            camera,
+            main_ui_scene,
+            ui,
         }
     }
 
@@ -158,15 +84,6 @@ impl App {
 
     pub fn run(&mut self, _gfx: &Graphics) {
         self.editor_camera_movement();
-
-        if self.last_frame_change.elapsed().as_millis() > 150 {
-            self.last_frame_change = std::time::Instant::now();
-            for tile in &self.animated_tiles {
-                tile.data.access_data(|data| {
-                    data.frame_offset = (data.frame_offset + 1) % 7; 
-                });
-            }
-        }
     }
 
     fn editor_camera_movement(&mut self) {
@@ -177,6 +94,9 @@ impl App {
                 self.camera.position[0] -= mouse_movement.x as f32 / self.camera.zoom;
                 self.camera.position[1] -= mouse_movement.y as f32 / self.camera.zoom;
             }
+        }
+        if self.input.keyboard.is_key_pressed(57) {
+            self.camera.zoom = self.camera.zoom.ceil();
         }
         self.camera.update_buffer();
     }

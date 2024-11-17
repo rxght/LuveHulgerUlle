@@ -46,7 +46,6 @@ impl Keyboard {
                 }
 
                 if let WindowEvent::KeyboardInput { input, .. } = event {
-                    
                     match input.state {
                         ElementState::Pressed => {
                             let previous_state = match self.key_map.read() {

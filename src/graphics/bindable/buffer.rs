@@ -25,7 +25,7 @@ impl<T> Bindable for VertexBuffer<T>
 where
     T: Vertex + BufferContents,
 {
-    fn bind_to_pipeline(&self, builder: &mut PipelineBuilder, _index_count: &mut u32) {
+    fn bind_to_pipeline(&self, builder: &mut PipelineBuilder) {
         builder.vertex_buffer_description = Some(T::per_vertex());
     }
 
@@ -116,9 +116,6 @@ pub struct IndexBuffer {
 }
 
 impl Bindable for IndexBuffer {
-    fn bind_to_pipeline(&self, _builder: &mut PipelineBuilder, index_count: &mut u32) {
-        *index_count = self.subbuffer.len().try_into().unwrap();
-    }
     fn bind(
         &self,
         _gfx: &Graphics,
@@ -130,6 +127,7 @@ impl Bindable for IndexBuffer {
     ) {
         builder.bind_index_buffer(self.subbuffer.clone());
     }
+    fn bind_to_pipeline(&self, _builder: &mut PipelineBuilder) {}
 }
 
 impl IndexBuffer {

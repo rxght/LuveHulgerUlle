@@ -54,7 +54,7 @@ impl<T> Bindable for PushConstant<T>
 where
     T: BufferContents + Clone,
 {
-    fn bind_to_pipeline(&self, builder: &mut PipelineBuilder, _index_count: &mut u32) {
+    fn bind_to_pipeline(&self, builder: &mut PipelineBuilder) {
         builder
             .push_constant_ranges
             .push(self.push_constant_range.clone());

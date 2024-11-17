@@ -4,7 +4,10 @@ use vulkano::{
     device::Device,
     pipeline::{
         graphics::{
-            color_blend::ColorBlendState,
+            color_blend::{
+                AttachmentBlend, BlendFactor, BlendOp, ColorBlendAttachmentState, ColorBlendState,
+                ColorComponents,
+            },
             depth_stencil::DepthStencilState,
             discard_rectangle::DiscardRectangleState,
             input_assembly::InputAssemblyState,
@@ -51,7 +54,21 @@ impl PipelineBuilder {
             vertex_shader: None,
             fragment_shader: None,
             viewport_state: ViewportState::viewport_dynamic_scissor_irrelevant(),
-            color_blend_state: ColorBlendState::default(),
+            color_blend_state: ColorBlendState {
+                attachments: vec![ColorBlendAttachmentState {
+                    blend: Some(AttachmentBlend {
+                        color_op: BlendOp::Add,
+                        color_source: BlendFactor::SrcAlpha,
+                        color_destination: BlendFactor::OneMinusSrcAlpha,
+                        alpha_op: BlendOp::Add,
+                        alpha_source: BlendFactor::One,
+                        alpha_destination: BlendFactor::One,
+                    }),
+                    color_write_mask: ColorComponents::all(),
+                    color_write_enable: StateMode::Fixed(true),
+                }],
+                ..Default::default()
+            },
             rasterization_state: RasterizationState {
                 cull_mode: StateMode::Fixed(CullMode::Back),
                 front_face: StateMode::Fixed(FrontFace::Clockwise),

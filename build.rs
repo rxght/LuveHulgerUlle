@@ -18,11 +18,11 @@ fn compile_shaders() {
     let source_folder: &Path = Path::new("./shaders/src/");
 
     // delete all compiled shaders
-    //if let Ok(directory) = out_folder.read_dir() {
-    //    for entry in directory {
-    //        let _ = entry.and_then(|entry| std::fs::remove_file(entry.path()));
-    //    }
-    //}
+    if let Ok(directory) = out_folder.read_dir() {
+        for entry in directory {
+            let _ = entry.and_then(|entry| std::fs::remove_file(entry.path()));
+        }
+    }
 
     let shader_sources = fs::read_dir(source_folder).unwrap();
     for shader_source in shader_sources {

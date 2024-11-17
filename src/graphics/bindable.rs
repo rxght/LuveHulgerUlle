@@ -19,14 +19,13 @@ mod texture;
 mod uniform;
 
 pub use buffer::*;
-pub use god_bindable::*;
 pub use push_constant::*;
 pub use shader::*;
 pub use texture::*;
 pub use uniform::*;
 
 pub trait Bindable {
-    fn bind_to_pipeline(&self, builder: &mut PipelineBuilder, index_count: &mut u32);
+    fn bind_to_pipeline(&self, builder: &mut PipelineBuilder);
     fn bind(
         &self,
         _gfx: &Graphics,

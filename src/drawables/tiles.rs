@@ -1,7 +1,5 @@
-mod tile;
-mod tile_group;
+mod tilemap;
 mod tileset;
 
-pub use tile::*;
-pub use tile_group::*;
+pub use tilemap::*;
 pub use tileset::*;

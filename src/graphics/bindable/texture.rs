@@ -81,9 +81,9 @@ impl Texture {
             true => Sampler::new(
                 gfx.get_device(),
                 SamplerCreateInfo {
-                    min_filter: vulkano::sampler::Filter::Nearest,
+                    min_filter: vulkano::sampler::Filter::Linear,
                     mag_filter: vulkano::sampler::Filter::Nearest,
-                    ..SamplerCreateInfo::simple_repeat_linear()
+                    ..SamplerCreateInfo::simple_repeat_linear_no_mipmap()
                 },
             )
             .unwrap(),
@@ -146,7 +146,7 @@ impl TextureBinding {
 }
 
 impl Bindable for TextureBinding {
-    fn bind_to_pipeline(&self, builder: &mut PipelineBuilder, _index_count: &mut u32) {
+    fn bind_to_pipeline(&self, builder: &mut PipelineBuilder) {
         builder.add_descriptor_set_layout(self.set_num, self.texture_ref.layout.clone());
     }
 

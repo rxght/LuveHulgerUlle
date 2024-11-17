@@ -1,8 +1,12 @@
 # Batako
 
-> ### Necessary optimizations
-> * All static tiles could be joined into one object drastically reducing rendering time. Animated tiles could be grouped toghether as long as they have the same animation_length and frame_interval.
-> * Split tile maps into chunks and only render chunks that are visible.
+### Long Term
+* Add a character
+* Add support for map objects (should make chests possible)
 
-> ### Necessary fixes
-> * Need to fix GenericDrawable::new() so that it doesn't need a shared_id argument. Here's an idea: <href>https://stackoverflow.com/questions/60714284/how-can-i-access-a-functions-calling-location-each-time-its-called</href>
+### Necessary fixes
+* Make a TileMapLoader singleton class that is responsible creating TileMap structs and loading all the required textures. This would ensure that tileset atlas' only get loaded once and it would also mean that you don't have to load any textures manually.
+* Animated tiles are not currently supported with the TileMap struct.
+
+### Possible Optimizations
+* Split tile maps into chunks and only render chunks that are visible. (This may be slower in some cases. May only be useful for really large maps)

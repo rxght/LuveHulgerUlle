@@ -8,5 +8,9 @@
         "shaders/*.vert": true,
         "target": true
     },
-    "rust-analyzer.showUnlinkedFileNotification": false
+    "rust-analyzer.showUnlinkedFileNotification": false,
+    "files.associations": {
+        "*.tsx": "xml",
+        "*.tmx": "xml"
+    }
 }

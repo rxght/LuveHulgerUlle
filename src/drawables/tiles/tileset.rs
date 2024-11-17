@@ -7,12 +7,15 @@ use vulkano::{
     shader::ShaderStages,
 };
 
-use crate::graphics::{
-    bindable::{self, PushConstant, Texture, UniformBuffer},
-    camera::Camera,
-    drawable::{DrawableEntry, GenericDrawable},
-    shaders::{frag_textured, vert_textured},
-    Graphics,
+use crate::{
+    graphics::{
+        bindable::{self, PushConstant, Texture, UniformBuffer},
+        camera::Camera,
+        drawable::{DrawableEntry, GenericDrawable},
+        shaders::frag_textured,
+        Graphics,
+    },
+    ui::Rectangle,
 };
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -58,6 +61,17 @@ impl TileSet {
         let bottom = (y + 1) as f32 * uv_height;
 
         [[left, top], [right, top], [left, bottom], [right, bottom]]
+    }
+
+    pub fn get_sprite_rectangle(&self, sprite_idx: u32) -> Rectangle {
+        let x = sprite_idx % self.atlas_width;
+        let y = sprite_idx / self.atlas_width;
+        Rectangle {
+            x_position: (x * self.tile_width) as i32,
+            y_position: (y * self.tile_width) as i32,
+            width: self.tile_width,
+            height: self.tile_width,
+        }
     }
 
     pub fn get_texture(&self) -> Arc<Texture> {

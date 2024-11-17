@@ -1,37 +1,36 @@
-use std::sync::Arc;
+use std::{cell::Cell, sync::Arc};
 
-use cgmath::Vector2;
 use vulkano::{
     buffer::BufferContents, pipeline::graphics::vertex_input::Vertex, shader::ShaderStages,
 };
 
 use crate::graphics::{
-    bindable::{self, PushConstant, UniformBuffer, UniformBufferBinding},
+    bindable::{self, UniformBuffer, UniformBufferBinding},
     drawable::{DrawableEntry, GenericDrawable},
-    shaders::{frag_color, frag_solid_white, vert_square},
+    shaders::{frag_color, vert_square},
     Graphics,
 };
 
-pub struct Square {
+use super::{NormalizedRectangle, UiElement, UiLayout};
+
+pub struct UiSquare {
+    layout: UiLayout,
+    descriptor: Cell<NormalizedRectangle>,
     pub drawable_entry: DrawableEntry,
-    pub data: Arc<PushConstant<vert_square::LayoutData>>,
+    pub data: Arc<UniformBuffer<vert_square::LayoutData>>,
 }
 
-#[derive(Clone, Copy, Default, Debug)]
-pub struct SquareDesc {
-    pub pos: [i32; 2],
-    pub width: u32,
-    pub height: u32,
-}
+impl UiSquare {
+    pub fn new(gfx: &mut Graphics, color: [f32; 4], layout: UiLayout) -> Arc<Self> {
+        let window_size: [u32; 2] = gfx.get_window().inner_size().into();
+        let descriptor = layout.normalize(window_size);
 
-impl Square {
-    pub fn new(gfx: &Graphics, square: SquareDesc, color: [f32; 4]) -> Self {
-        let data = PushConstant::new(
+        let data = UniformBuffer::new(
             gfx,
             0,
             vert_square::LayoutData {
-                position: [square.pos[0] as f32, square.pos[1] as f32],
-                dimensions: [square.width as f32, square.height as f32],
+                position: [descriptor.x_position, descriptor.y_position],
+                dimensions: [descriptor.width, descriptor.height],
             },
             ShaderStages::VERTEX,
         );
@@ -40,8 +39,8 @@ impl Square {
             gfx,
             || {
                 vec![
-                    data.clone(),
-                    bindable::UniformBufferBinding::new(
+                    UniformBufferBinding::new(data.clone(), 0),
+                    UniformBufferBinding::new(
                         UniformBuffer::new(
                             gfx,
                             0,
@@ -67,7 +66,7 @@ impl Square {
                     Vertex { pos: [1.0, 1.0] },
                 ];
 
-                let indices: Vec<u32> = vec![0, 3, 1, 0, 2, 3];
+                let indices: Vec<u32> = vec![0, 1, 3, 0, 3, 2];
 
                 vec![
                     bindable::VertexBuffer::new(gfx, vertices),
@@ -78,14 +77,33 @@ impl Square {
                     bindable::FragmentShader::from_module(
                         frag_color::load(gfx.get_device()).unwrap(),
                     ),
-                    UniformBufferBinding::new(gfx.get_utils().cartesian_to_normalized.clone(), 0),
                 ]
             },
             6,
         );
-        Self {
+
+        Arc::new(Self {
+            layout,
+            descriptor: Cell::new(descriptor),
             drawable_entry,
             data: data,
-        }
+        })
+    }
+}
+
+impl UiElement for UiSquare {
+    fn handle_resize(&self, new_size: [u32; 2]) {
+        let descriptor = self.layout.normalize(new_size);
+        self.data.access_data(|data| {
+            data.position = [descriptor.x_position, descriptor.y_position];
+            data.dimensions = [descriptor.width, descriptor.height];
+        });
+        self.descriptor.set(descriptor);
+    }
+    fn get_drawable_entry(&self) -> &DrawableEntry {
+        &self.drawable_entry
+    }
+    fn get_layout(&self) -> NormalizedRectangle {
+        self.descriptor.get()
     }
 }

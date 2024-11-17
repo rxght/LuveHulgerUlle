@@ -89,9 +89,9 @@ impl Mouse {
                 }
                 if let DeviceEvent::MouseWheel { delta } = event {
                     match delta {
-                        winit::event::MouseScrollDelta::LineDelta(_, val) => {
-                            self.scroll_wheel_movement.set(self.scroll_wheel_movement.get() + val)
-                        },
+                        winit::event::MouseScrollDelta::LineDelta(_, val) => self
+                            .scroll_wheel_movement
+                            .set(self.scroll_wheel_movement.get() + val),
                         winit::event::MouseScrollDelta::PixelDelta(_) => unimplemented!(),
                     }
                 }
