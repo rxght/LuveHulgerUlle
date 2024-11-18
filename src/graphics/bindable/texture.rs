@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     io::Cursor,
-    sync::{Arc, LazyLock, Mutex},
+    sync::{Arc, LazyLock, RwLock},
 };
 
 use vulkano::{
@@ -30,10 +30,10 @@ pub struct Texture {
     descriptor_set: Arc<PersistentDescriptorSet>,
 }
 
-static NEAREST_NEIGHBOR_LAYOUTS: LazyLock<Mutex<HashMap<u32, Arc<DescriptorSetLayout>>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
-static LINEAR_LAYOUTS: LazyLock<Mutex<HashMap<u32, Arc<DescriptorSetLayout>>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
+static NEAREST_NEIGHBOR_LAYOUTS: LazyLock<RwLock<HashMap<u32, Arc<DescriptorSetLayout>>>> =
+    LazyLock::new(|| RwLock::new(HashMap::new()));
+static LINEAR_LAYOUTS: LazyLock<RwLock<HashMap<u32, Arc<DescriptorSetLayout>>>> =
+    LazyLock::new(|| RwLock::new(HashMap::new()));
 
 impl Texture {
     pub fn new(gfx: &Graphics, path: &str, binding: u32, use_nearest_neighbor: bool) -> Arc<Self> {
@@ -108,12 +108,12 @@ impl Texture {
         binding: u32,
         use_nearest_neighbor: bool,
     ) -> Arc<DescriptorSetLayout> {
-        let mut layout_map = match use_nearest_neighbor {
-            true => NEAREST_NEIGHBOR_LAYOUTS.lock().unwrap(),
-            false => LINEAR_LAYOUTS.lock().unwrap(),
+        let layout_map = match use_nearest_neighbor {
+            true => &NEAREST_NEIGHBOR_LAYOUTS,
+            false => &LINEAR_LAYOUTS,
         };
 
-        if let Some(layout) = layout_map.get(&binding) {
+        if let Some(layout) = layout_map.read().unwrap().get(&binding) {
             return layout.clone();
         }
 
@@ -153,7 +153,7 @@ impl Texture {
         )
         .unwrap();
 
-        layout_map.insert(binding, layout.clone());
+        layout_map.write().unwrap().insert(binding, layout.clone());
         return layout;
     }
 }
