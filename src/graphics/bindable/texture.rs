@@ -1,4 +1,8 @@
-use std::{io::Cursor, sync::Arc};
+use std::{
+    collections::HashMap,
+    io::Cursor,
+    sync::{Arc, LazyLock, Mutex},
+};
 
 use vulkano::{
     command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, PrimaryCommandBufferAbstract},
@@ -11,7 +15,7 @@ use vulkano::{
     },
     format::Format,
     image::{view::ImageView, ImageDimensions, ImmutableImage},
-    sampler::{Sampler, SamplerCreateInfo},
+    sampler::{Filter, Sampler, SamplerCreateInfo},
     shader::ShaderStages,
     sync::GpuFuture,
 };
@@ -22,10 +26,14 @@ use super::Bindable;
 
 pub struct Texture {
     pub image: Arc<ImageView<ImmutableImage>>,
-    pub sampler: Arc<Sampler>,
     layout: Arc<DescriptorSetLayout>,
     descriptor_set: Arc<PersistentDescriptorSet>,
 }
+
+static NEAREST_NEIGHBOR_LAYOUTS: LazyLock<Mutex<HashMap<u32, Arc<DescriptorSetLayout>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+static LINEAR_LAYOUTS: LazyLock<Mutex<HashMap<u32, Arc<DescriptorSetLayout>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 impl Texture {
     pub fn new(gfx: &Graphics, path: &str, binding: u32, use_nearest_neighbor: bool) -> Arc<Self> {
@@ -77,41 +85,7 @@ impl Texture {
             .then_signal_fence_and_flush()
             .unwrap();
 
-        let sampler = match use_nearest_neighbor {
-            true => Sampler::new(
-                gfx.get_device(),
-                SamplerCreateInfo {
-                    min_filter: vulkano::sampler::Filter::Linear,
-                    mag_filter: vulkano::sampler::Filter::Nearest,
-                    ..SamplerCreateInfo::simple_repeat_linear_no_mipmap()
-                },
-            )
-            .unwrap(),
-            false => {
-                Sampler::new(gfx.get_device(), SamplerCreateInfo::simple_repeat_linear()).unwrap()
-            }
-        };
-
-        let layout = DescriptorSetLayout::new(
-            gfx.get_device(),
-            DescriptorSetLayoutCreateInfo {
-                bindings: [(
-                    binding,
-                    DescriptorSetLayoutBinding {
-                        stages: ShaderStages::FRAGMENT,
-                        descriptor_count: 1,
-                        variable_descriptor_count: false,
-                        immutable_samplers: vec![sampler.clone()],
-                        ..DescriptorSetLayoutBinding::descriptor_type(
-                            DescriptorType::CombinedImageSampler,
-                        )
-                    },
-                )]
-                .into(),
-                ..Default::default()
-            },
-        )
-        .unwrap();
+        let layout = Self::get_descriptor_set_layout(gfx, binding, use_nearest_neighbor);
 
         fence.wait(None).unwrap();
 
@@ -124,10 +98,63 @@ impl Texture {
 
         Arc::new(Self {
             image: image,
-            sampler: sampler,
             layout: layout,
             descriptor_set: set,
         })
+    }
+
+    fn get_descriptor_set_layout(
+        gfx: &Graphics,
+        binding: u32,
+        use_nearest_neighbor: bool,
+    ) -> Arc<DescriptorSetLayout> {
+        let mut layout_map = match use_nearest_neighbor {
+            true => NEAREST_NEIGHBOR_LAYOUTS.lock().unwrap(),
+            false => LINEAR_LAYOUTS.lock().unwrap(),
+        };
+
+        if let Some(layout) = layout_map.get(&binding) {
+            return layout.clone();
+        }
+
+        let filter = match use_nearest_neighbor {
+            true => Filter::Nearest,
+            false => Filter::Linear,
+        };
+
+        let sampler = Sampler::new(
+            gfx.get_device(),
+            SamplerCreateInfo {
+                min_filter: vulkano::sampler::Filter::Linear,
+                mag_filter: filter,
+                ..SamplerCreateInfo::simple_repeat_linear()
+            },
+        )
+        .unwrap();
+
+        let layout = DescriptorSetLayout::new(
+            gfx.get_device(),
+            DescriptorSetLayoutCreateInfo {
+                bindings: [(
+                    binding,
+                    DescriptorSetLayoutBinding {
+                        stages: ShaderStages::FRAGMENT,
+                        descriptor_count: 1,
+                        variable_descriptor_count: false,
+                        immutable_samplers: vec![sampler],
+                        ..DescriptorSetLayoutBinding::descriptor_type(
+                            DescriptorType::CombinedImageSampler,
+                        )
+                    },
+                )]
+                .into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        layout_map.insert(binding, layout.clone());
+        return layout;
     }
 }
 

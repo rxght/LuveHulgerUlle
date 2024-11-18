@@ -18,13 +18,6 @@ use crate::{
     ui::Rectangle,
 };
 
-#[derive(Clone, Copy, Debug, Default)]
-pub struct AnimationDesc {
-    pub length: u32,
-    pub interval: u32,
-    pub offset: u32,
-}
-
 pub struct TileSet {
     atlas: Arc<Texture>,
     pub tile_width: u32,
