@@ -1,11 +1,24 @@
 mod tileset;
 
 use std::{
-    cell::Cell, collections::{HashMap, HashSet}, ffi::OsStr, hash::{BuildHasher, DefaultHasher, Hash, Hasher, RandomState}, mem::MaybeUninit, path::{Path, PathBuf}, ptr::addr_of, str::FromStr, sync::{Arc, LazyLock, OnceLock}
+    cell::Cell,
+    collections::{HashMap, HashSet},
+    ffi::OsStr,
+    hash::{BuildHasher, DefaultHasher, Hash, Hasher, RandomState},
+    mem::MaybeUninit,
+    path::{Path, PathBuf},
+    ptr::addr_of,
+    str::FromStr,
+    sync::{Arc, LazyLock, OnceLock},
 };
 use tiled::{Frame, Image, LayerTile, LayerType};
 use tileset::TileSet;
-use vulkano::{buffer::BufferContents, image::ImageViewAbstract, pipeline::graphics::vertex_input::Vertex, shader::{ShaderStage, ShaderStages}};
+use vulkano::{
+    buffer::BufferContents,
+    image::ImageViewAbstract,
+    pipeline::graphics::vertex_input::Vertex,
+    shader::{ShaderStage, ShaderStages},
+};
 
 use crate::graphics::{
     bindable::{self, Texture, UniformBuffer},
@@ -32,9 +45,19 @@ struct TileAnimation {
 impl TileAnimation {
     pub fn new<'a>(gfx: &Graphics, id: u64, tile_set: &Arc<TileSet>, frames: Vec<Frame>) -> Self {
         Self {
-            buffer: UniformBuffer::new(gfx, 0, FrameData{ frame_uv_offset: [0.0, 0.0] }, ShaderStages::VERTEX),
+            buffer: UniformBuffer::new(
+                gfx,
+                0,
+                FrameData {
+                    frame_uv_offset: [0.0, 0.0],
+                },
+                ShaderStages::VERTEX,
+            ),
             last_frame_time: Cell::new(std::time::Instant::now()),
-            frames: frames.into_iter().map(|p| (tile_set.get_uv_of_sprite(p.tile_id)[0], p.duration)).collect(),
+            frames: frames
+                .into_iter()
+                .map(|p| (tile_set.get_uv_of_sprite(p.tile_id)[0], p.duration))
+                .collect(),
             current_frame: Cell::new(0),
             id,
         }
@@ -73,7 +96,14 @@ impl TileMapLoader {
             loaded_tile_sets: HashMap::new(),
             loaded_tile_maps: HashMap::new(),
             animations: HashMap::new(),
-            no_frame_offset_buffer: UniformBuffer::new(gfx, 0, FrameData{ frame_uv_offset: [0.0; 2]}, ShaderStages::VERTEX),
+            no_frame_offset_buffer: UniformBuffer::new(
+                gfx,
+                0,
+                FrameData {
+                    frame_uv_offset: [0.0; 2],
+                },
+                ShaderStages::VERTEX,
+            ),
         }
     }
 
@@ -129,12 +159,21 @@ impl TileMapLoader {
                             let top = y as f32 * -tile_scale;
 
                             if let Some(animation) = self.get_animation(gfx, tile) {
-                                let layer = animation_layers.entry(animation.id).or_insert(AnimatedLayer{ vertices: Vec::new(), indices: Vec::new(), animation: animation.clone(), });
-                                
+                                let layer =
+                                    animation_layers
+                                        .entry(animation.id)
+                                        .or_insert(AnimatedLayer {
+                                            vertices: Vec::new(),
+                                            indices: Vec::new(),
+                                            animation: animation.clone(),
+                                        });
+
                                 let index_offset = layer.vertices.len() as u32;
 
-                                let uv_width = tile_set.tile_width as f32 / tile_set.get_texture().image.dimensions().width() as f32;
-                                let uv_height = tile_set.tile_width as f32 / tile_set.get_texture().image.dimensions().height() as f32;
+                                let uv_width = tile_set.tile_width as f32
+                                    / tile_set.get_texture().image.dimensions().width() as f32;
+                                let uv_height = tile_set.tile_width as f32
+                                    / tile_set.get_texture().image.dimensions().height() as f32;
 
                                 layer.vertices.push(VertexT {
                                     pos: [left, top],
@@ -189,24 +228,40 @@ impl TileMapLoader {
                     }
                 }
 
-                if let Some(layer) = Self::create_layer(gfx, vertices, indices, tile_set, camera, self.no_frame_offset_buffer.clone()) {
+                if let Some(layer) = Self::create_layer(
+                    gfx,
+                    vertices,
+                    indices,
+                    tile_set,
+                    camera,
+                    self.no_frame_offset_buffer.clone(),
+                ) {
                     layers.push(layer);
                 }
-                
+
                 for (_, animated_layer) in animation_layers {
-                    if let Some(layer) = Self::create_layer(gfx, animated_layer.vertices, animated_layer.indices, tile_set, camera, animated_layer.animation.buffer.clone()) {
+                    if let Some(layer) = Self::create_layer(
+                        gfx,
+                        animated_layer.vertices,
+                        animated_layer.indices,
+                        tile_set,
+                        camera,
+                        animated_layer.animation.buffer.clone(),
+                    ) {
                         layers.push(layer);
                     }
                 }
             }
         }
 
-        Arc::new(TileMap {
-            layers,
-        })
+        Arc::new(TileMap { layers })
     }
 
-    fn get_animation<'a>(&mut self, gfx: &Graphics, tile: LayerTile<'a>) -> Option<Arc<TileAnimation>> {
+    fn get_animation<'a>(
+        &mut self,
+        gfx: &Graphics,
+        tile: LayerTile<'a>,
+    ) -> Option<Arc<TileAnimation>> {
         let frames = tile.get_tile()?.clone().animation?;
         let hasher = &mut self.animations.hasher().build_hasher();
         tile.tileset_index().hash(hasher);
@@ -218,15 +273,29 @@ impl TileMapLoader {
         let id = hasher.finish();
         if self.animations.contains_key(&id) {
             return self.animations.get(&id).cloned();
-        }
-        else {
-            let tile_set = self.loaded_tile_sets.get(tile.get_tileset().image.as_ref()?.source.file_name()?.to_str()?)?;
-            self.animations.insert(id, Arc::new(TileAnimation::new(gfx, id, tile_set, frames)));
+        } else {
+            let tile_set = self.loaded_tile_sets.get(
+                tile.get_tileset()
+                    .image
+                    .as_ref()?
+                    .source
+                    .file_name()?
+                    .to_str()?,
+            )?;
+            self.animations
+                .insert(id, Arc::new(TileAnimation::new(gfx, id, tile_set, frames)));
             return self.animations.get(&id).cloned();
         }
     }
 
-    fn create_layer(gfx: &Graphics, vertices: Vec<VertexT>, indices: Vec<u32>, tile_set: &Arc<TileSet>, camera: &Camera, frame_data: Arc<UniformBuffer<FrameData>>) -> Option<DrawableEntry> {
+    fn create_layer(
+        gfx: &Graphics,
+        vertices: Vec<VertexT>,
+        indices: Vec<u32>,
+        tile_set: &Arc<TileSet>,
+        camera: &Camera,
+        frame_data: Arc<UniformBuffer<FrameData>>,
+    ) -> Option<DrawableEntry> {
         let index_count = indices.len() as u32;
         if index_count == 0 {
             return None;
@@ -243,9 +312,7 @@ impl TileMapLoader {
             },
             || {
                 vec![
-                    bindable::VertexShader::from_module(
-                        vert_tile::load(gfx.get_device()).unwrap(),
-                    ),
+                    bindable::VertexShader::from_module(vert_tile::load(gfx.get_device()).unwrap()),
                     bindable::FragmentShader::from_module(
                         frag_textured::load(gfx.get_device()).unwrap(),
                     ),
@@ -269,7 +336,6 @@ impl TileMapLoader {
         let mut result = Vec::new();
 
         for tile_set in tile_sets {
-
             let source_path = match tile_set.image.as_ref().and_then(|p| p.source.to_str()) {
                 Some(v) => v,
                 None => continue,
@@ -298,10 +364,14 @@ impl TileMapLoader {
             let frame_idx = animation.current_frame.get();
             let (_, frame_duration) = animation.frames[frame_idx];
             if animation.last_frame_time.get().elapsed().as_millis() as u32 > frame_duration {
-                animation.current_frame.set((frame_idx + 1) % animation.frames.len());
+                animation
+                    .current_frame
+                    .set((frame_idx + 1) % animation.frames.len());
                 animation.last_frame_time.set(std::time::Instant::now());
                 let (uv_offset, _) = animation.frames[animation.current_frame.get()];
-                animation.buffer.access_data(|data| data.frame_uv_offset = uv_offset);
+                animation
+                    .buffer
+                    .access_data(|data| data.frame_uv_offset = uv_offset);
             }
         });
     }

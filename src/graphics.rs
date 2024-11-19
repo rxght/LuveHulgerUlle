@@ -59,17 +59,15 @@ use winit::{
 
 const IN_FLIGHT_COUNT: usize = 2;
 
-// If true MAILBOX will always be used if available.
-// If false FIFO will be preferred.
-const PREFER_MAILBOX_PRESENT_MODE: bool = false;
-
 const DEVICE_EXTENSIONS: DeviceExtensions = DeviceExtensions {
     khr_swapchain: true,
     ..DeviceExtensions::empty()
 };
 
 const INSTANCE_EXTENSIONS: InstanceExtensions = InstanceExtensions {
+    #[cfg(debug_assertions)]
     ext_validation_features: true,
+    #[cfg(debug_assertions)]
     ext_debug_utils: true,
     ..InstanceExtensions::empty()
 };
@@ -79,10 +77,15 @@ const ENABLED_FEATURES: Features = Features {
     ..Features::empty()
 };
 
-const ENABLED_VALIDATION_FEATURES: [ValidationFeatureEnable; 1] =
-    [ValidationFeatureEnable::BestPractices];
+const ENABLED_VALIDATION_FEATURES: &[ValidationFeatureEnable] = &[
+    #[cfg(debug_assertions)]
+    ValidationFeatureEnable::BestPractices,
+];
 
-const VALIDATION_LAYERS: [&str; 1] = ["VK_LAYER_KHRONOS_validation"];
+const VALIDATION_LAYERS: &[&str] = &[
+    #[cfg(debug_assertions)]
+    "VK_LAYER_KHRONOS_validation",
+];
 
 #[derive(Default)]
 struct Queues {
@@ -454,7 +457,7 @@ fn create_instance(library: Arc<VulkanLibrary>) -> Arc<Instance> {
         enabled_layers: VALIDATION_LAYERS.iter().map(|p| String::from(*p)).collect(),
         enumerate_portability: false,
         max_api_version: None,
-        enabled_validation_features: Vec::from_iter(ENABLED_VALIDATION_FEATURES.into_iter()),
+        enabled_validation_features: Vec::from(ENABLED_VALIDATION_FEATURES),
         ..InstanceCreateInfo::default()
     };
 
@@ -658,23 +661,8 @@ fn create_swapchain(
         }
     };
 
-    use vulkano::swapchain::PresentMode;
-    let present_mode = present_modes
-        .min_by_key(|p| match *p {
-            PresentMode::Mailbox => {
-                if PREFER_MAILBOX_PRESENT_MODE {
-                    0
-                } else {
-                    2
-                }
-            }
-            PresentMode::Fifo => 1,
-
-            PresentMode::FifoRelaxed => 3,
-            PresentMode::Immediate => 4,
-            _ => 5,
-        })
-        .unwrap();
+    // if vsync is enabled then PresentMode::Immediate should be filtered out here
+    let present_mode = present_modes.min_by_key(|p| *p as i32).unwrap();
 
     let indices = find_queue_indices(device.physical_device().clone(), surface.clone());
     let image_sharing = if indices.graphics_queue == indices.present_queue {
