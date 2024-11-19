@@ -13,8 +13,12 @@ layout( set = 2, binding = 0) uniform CameraUbo {
     mat4 camera;
 };
 
+layout( set = 3, binding = 0) uniform FrameData {
+    vec2 uv_offset;
+};
+
 void main()
 {
     gl_Position =  cartesian_to_normalized * camera * vec4(pos, 0.0f, 1.0f);
-    out_uv = uv;
+    out_uv = uv + uv_offset;
 }

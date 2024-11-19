@@ -26,8 +26,8 @@ impl App {
     pub fn new(gfx: &mut Graphics, input: Arc<Input>, ui: Arc<Ui>) -> Self {
         let camera = Camera::new(gfx, [0.0, 0.0], 1.0, 0.0);
 
-        let mut loader = TileMapLoader::new();
-        let tile_map = loader.load(gfx, "assets/tilemaps/multiset_map.tmx", &camera);
+        let mut loader = TileMapLoader::new(gfx);
+        let tile_map = loader.load(gfx, "assets/tilemaps/animated.tmx", &camera);
 
         tile_map
             .layers
@@ -70,6 +70,7 @@ impl App {
 
     pub fn run(&mut self, _gfx: &Graphics) {
         self.editor_camera_movement();
+        self.tile_map_loader.update();
     }
 
     fn editor_camera_movement(&mut self) {
