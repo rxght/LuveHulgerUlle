@@ -22,8 +22,8 @@ impl Camera {
                 camera: (cgmath::Matrix4::from_scale(zoom)
                     * cgmath::Matrix4::from_angle_z(Deg(rotation))
                     * cgmath::Matrix4::from_translation(Vector3::new(
-                        -position[0],
-                        position[1],
+                        -position[0].round(),
+                        position[1].round(),
                         0.0,
                     )))
                 .into(),
@@ -48,8 +48,8 @@ impl Camera {
             data.camera = (cgmath::Matrix4::from_scale(self.zoom)
                 * cgmath::Matrix4::from_angle_z(Deg(self.rotation))
                 * cgmath::Matrix4::from_translation(Vector3::new(
-                    -self.position[0],
-                    self.position[1],
+                    -self.position[0].round(),
+                    self.position[1].round(),
                     0.0,
                 )))
             .into();

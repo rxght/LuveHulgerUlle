@@ -12,7 +12,7 @@ use crate::{
         bindable::{self, PushConstant, Texture, UniformBuffer},
         camera::Camera,
         drawable::{DrawableEntry, GenericDrawable},
-        shaders::frag_textured,
+        shaders::{frag_textured, vert_tile},
         Graphics,
     },
     ui::Rectangle,
@@ -20,9 +20,10 @@ use crate::{
 
 pub struct TileSet {
     atlas: Arc<Texture>,
-    pub tile_width: u32,
-    pub atlas_width: u32,
-    pub atlas_height: u32,
+    pub(super) tile_width: u32,
+    pub(super) atlas_width: u32,
+    pub(super) atlas_height: u32,
+    pub(super) uv_margins: Arc<UniformBuffer<vert_tile::MarginData>>
 }
 
 impl TileSet {
@@ -38,6 +39,10 @@ impl TileSet {
             tile_width: tile_width,
             atlas_width: atlas_width,
             atlas_height: atlas_height,
+            uv_margins: UniformBuffer::new(gfx, 0, vert_tile::MarginData{
+                x_margin: 0.5 / atlas_dimensions[0] as f32,
+                y_margin: 0.5 / atlas_dimensions[1] as f32,
+            }, ShaderStages::VERTEX),
         })
     }
 

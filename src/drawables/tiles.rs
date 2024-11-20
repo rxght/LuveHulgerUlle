@@ -308,6 +308,7 @@ impl TileMapLoader {
                     bindable::VertexBuffer::new(gfx, vertices),
                     bindable::IndexBuffer::new(gfx, indices),
                     bindable::UniformBufferBinding::new(frame_data, 3),
+                    bindable::UniformBufferBinding::new(tile_set.uv_margins.clone(), 4),
                 ]
             },
             || {

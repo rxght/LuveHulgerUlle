@@ -5,11 +5,8 @@ use crate::drawables::tiles::TileMapLoader;
 use crate::graphics::camera::Camera;
 use crate::graphics::Graphics;
 use crate::input::Input;
-use crate::ui::ui_square::UiSquare;
 use crate::ui::Ui;
-use crate::ui::UiLayout;
 use crate::ui::UiScene;
-use crate::ui::UiUnit;
 use std::sync::Arc;
 
 pub struct App {
@@ -27,23 +24,14 @@ impl App {
         let camera = Camera::new(gfx, [0.0, 0.0], 1.0, 0.0);
 
         let mut loader = TileMapLoader::new(gfx);
-        let tile_map = loader.load(gfx, "assets/tilemaps/animated.tmx", &camera);
+        let tile_map = loader.load(gfx, "assets/tilemaps/bigmap.tmx", &camera);
 
         tile_map
             .layers
             .iter()
             .for_each(|p| gfx.register_drawable(p));
 
-        let main_ui_scene = UiScene(vec![UiSquare::new(
-            gfx,
-            [0.7, 0.72, 0.75, 1.0],
-            UiLayout {
-                x: UiUnit::Combined(50.0, -500.0),
-                y: UiUnit::Percentage(0.0),
-                width: UiUnit::Pixels(1000.0),
-                height: UiUnit::Pixels(64.0),
-            },
-        )]);
+        let main_ui_scene = UiScene(vec![]);
 
         let main_ui_scene = Arc::new(main_ui_scene);
 
@@ -86,5 +74,18 @@ impl App {
             self.camera.zoom = self.camera.zoom.ceil();
         }
         self.camera.update_buffer();
+
+        if self.input.keyboard.is_key_held(17).is_some() {
+            self.camera.position[1] -= 0.2;
+        }
+        if self.input.keyboard.is_key_held(30).is_some() {
+            self.camera.position[0] -= 0.2;
+        }
+        if self.input.keyboard.is_key_held(31).is_some() {
+            self.camera.position[1] += 0.2;
+        }
+        if self.input.keyboard.is_key_held(32).is_some() {
+            self.camera.position[0] += 0.2;
+        }
     }
 }

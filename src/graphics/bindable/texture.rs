@@ -127,7 +127,7 @@ impl Texture {
             SamplerCreateInfo {
                 min_filter: vulkano::sampler::Filter::Linear,
                 mag_filter: filter,
-                ..SamplerCreateInfo::simple_repeat_linear()
+                ..SamplerCreateInfo::simple_repeat_linear_no_mipmap()
             },
         )
         .unwrap();
