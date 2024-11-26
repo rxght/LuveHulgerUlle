@@ -3,8 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use cgmath::Vector2;
 use vulkano::{
-    buffer::BufferContents, image::ImageViewAbstract, pipeline::graphics::vertex_input::Vertex,
-    shader::ShaderStages,
+    buffer::BufferContents, image::ImageViewAbstract, pipeline::graphics::vertex_input::Vertex, sampler::Filter, shader::ShaderStages
 };
 
 use crate::{
@@ -23,12 +22,12 @@ pub struct TileSet {
     pub(super) tile_width: u32,
     pub(super) atlas_width: u32,
     pub(super) atlas_height: u32,
-    pub(super) uv_margins: Arc<UniformBuffer<vert_tile::MarginData>>
+    pub(super) uv_margins: Arc<UniformBuffer<vert_tile::MarginData>>,
 }
 
 impl TileSet {
     pub fn new(gfx: &Graphics, sheet_texture: &str, tile_width: u32) -> Arc<Self> {
-        let atlas = Texture::new(gfx, sheet_texture, 0, true);
+        let atlas = Texture::new(gfx, sheet_texture, Filter::Nearest);
         let atlas_dimensions = atlas.image.dimensions().width_height();
 
         let atlas_width = atlas_dimensions[0] / tile_width;
@@ -39,10 +38,15 @@ impl TileSet {
             tile_width: tile_width,
             atlas_width: atlas_width,
             atlas_height: atlas_height,
-            uv_margins: UniformBuffer::new(gfx, 0, vert_tile::MarginData{
-                x_margin: 0.5 / atlas_dimensions[0] as f32,
-                y_margin: 0.5 / atlas_dimensions[1] as f32,
-            }, ShaderStages::VERTEX),
+            uv_margins: UniformBuffer::new(
+                gfx,
+                0,
+                vert_tile::MarginData {
+                    x_margin: 0.5 / atlas_dimensions[0] as f32,
+                    y_margin: 0.5 / atlas_dimensions[1] as f32,
+                },
+                ShaderStages::VERTEX,
+            ),
         })
     }
 

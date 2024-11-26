@@ -1,7 +1,5 @@
 use std::{
-    collections::HashMap,
-    io::Cursor,
-    sync::{Arc, LazyLock, RwLock},
+    collections::HashMap, hash::{BuildHasher, Hash, Hasher}, sync::{Arc, LazyLock, RwLock, Weak}
 };
 
 use vulkano::{
@@ -30,13 +28,138 @@ pub struct Texture {
     descriptor_set: Arc<PersistentDescriptorSet>,
 }
 
-static NEAREST_NEIGHBOR_LAYOUTS: LazyLock<RwLock<HashMap<u32, Arc<DescriptorSetLayout>>>> =
-    LazyLock::new(|| RwLock::new(HashMap::new()));
-static LINEAR_LAYOUTS: LazyLock<RwLock<HashMap<u32, Arc<DescriptorSetLayout>>>> =
-    LazyLock::new(|| RwLock::new(HashMap::new()));
+#[derive(Hash, PartialEq, Eq)]
+struct LayoutCreateArgs {
+    pub shader_strages: ShaderStages,
+    pub min_filter: Filter,
+    pub mag_filter: Filter,
+}
 
 impl Texture {
-    pub fn new(gfx: &Graphics, path: &str, binding: u32, use_nearest_neighbor: bool) -> Arc<Self> {
+    pub fn new(gfx: &Graphics, path: &str, filter: Filter) -> Arc<Texture> {
+        let source_file = std::fs::File::open(path).unwrap();
+
+        let mut decoder = png::Decoder::new(source_file);
+        let image_info = decoder.read_header_info().unwrap();
+
+        let image_dimensions = ImageDimensions::Dim2d {
+            width: image_info.width,
+            height: image_info.height,
+            array_layers: 1,
+        };
+
+        assert!(image_info.bytes_per_pixel() == 4);
+
+        Self::new_inner(
+            gfx,
+            path,
+            || {
+                let mut reader = decoder.read_info().unwrap();
+                let mut buffer = vec![0; reader.output_buffer_size()];
+                reader.next_frame(&mut buffer).unwrap();
+                buffer
+            },
+            image_dimensions,
+            Format::R8G8B8A8_SRGB,
+            LayoutCreateArgs {
+                shader_strages: ShaderStages::FRAGMENT,
+                min_filter: filter,
+                mag_filter: filter,
+            },
+        )
+    }
+
+    pub fn new_array(gfx: &Graphics, path: &str, layer_dimensions: [u32; 2]) -> Arc<Texture> {
+        let source_file = std::fs::File::open(path).unwrap();
+
+        let mut decoder = png::Decoder::new(source_file);
+        let image_info = decoder.read_header_info().unwrap();
+
+        let cols = image_info.width / layer_dimensions[0];
+        let rows = image_info.height / layer_dimensions[1];
+
+        let image_dimensions = ImageDimensions::Dim2d {
+            width: layer_dimensions[0],
+            height: layer_dimensions[1],
+            array_layers: cols * rows,
+        };
+        
+        assert!(image_info.bytes_per_pixel() == 4);
+
+        let bytes_closure = || {
+            let mut reader = decoder.read_info().unwrap();
+            let mut buffer = vec![0; reader.output_buffer_size()];
+            reader.next_frame(&mut buffer).unwrap();
+            
+            let mut rearranged_image_data = vec![0u8; buffer.len()];
+            let chunk_size = 4 * layer_dimensions[0] as usize;
+
+            for (i, source_chunk) in buffer.chunks(chunk_size).enumerate() {
+                let chunks_per_layer = layer_dimensions[1] as usize;
+                let chunks_per_row = cols as usize;
+                let layers_per_row = chunks_per_row;
+                
+                let chunk_x = i % chunks_per_row;
+                let chunk_y = i / chunks_per_row;
+
+                let layer_x = chunk_x;
+                let layer_y = chunk_y / chunks_per_layer;
+
+                let layer_idx = layer_x + layer_y * layers_per_row;
+                
+
+                let target_chunk_idx = chunks_per_layer * layer_idx + chunk_y % chunks_per_layer;
+
+                let target_chunk_start = target_chunk_idx * chunk_size;
+                let target_chunk_end = target_chunk_start + chunk_size;
+
+                rearranged_image_data[target_chunk_start..target_chunk_end].clone_from_slice(source_chunk);
+            }
+            rearranged_image_data
+        };
+
+        Self::new_inner(
+            gfx,
+            path,
+            bytes_closure,
+            image_dimensions,
+            Format::R8G8B8A8_SRGB,
+            LayoutCreateArgs {
+                shader_strages: ShaderStages::FRAGMENT,
+                min_filter: Filter::Nearest,
+                mag_filter: Filter::Nearest,
+            },
+        )
+    }
+
+    fn new_inner<I>(
+        gfx: &Graphics,
+        source_file_name: &str,
+        bytes: impl FnOnce() -> I,
+        dimensions: ImageDimensions,
+        image_format: Format,
+        layout: LayoutCreateArgs,
+    ) -> Arc<Self>
+    where
+        I: IntoIterator<Item = u8>,
+        I::IntoIter: ExactSizeIterator,
+    {
+        static TEXTURE_CACHE: LazyLock<RwLock<HashMap<u64, Weak<Texture>>>> =
+            LazyLock::new(|| RwLock::new(HashMap::new()));
+        let hasher = &mut TEXTURE_CACHE.read().unwrap().hasher().build_hasher();
+        source_file_name.hash(hasher);
+        dimensions.width_height_depth().hash(hasher);
+        let texture_id = hasher.finish();
+
+        if let Some(weak_ptr) = TEXTURE_CACHE.read().unwrap().get(&texture_id) {
+            match weak_ptr.upgrade() {
+                Some(arc) => return arc,
+                None => {
+                    TEXTURE_CACHE.write().unwrap().remove(&texture_id);
+                }
+            }
+        }
+
         let mut uploads = AutoCommandBufferBuilder::primary(
             gfx.get_cmd_allocator(),
             gfx.graphics_queue().queue_family_index(),
@@ -45,32 +168,18 @@ impl Texture {
         .unwrap();
 
         let image = {
-            let bytes = std::fs::read(path).expect("Texture file not found.");
-            let cursor = Cursor::new(bytes);
-            let decoder = png::Decoder::new(cursor);
-            let mut reader = decoder.read_info().unwrap();
-            let info = reader.info();
             let dimensions = ImageDimensions::Dim2d {
-                width: info.width,
-                height: info.height,
+                width: 0,
+                height: 0,
                 array_layers: 1,
             };
 
-            assert_eq!(
-                info.bit_depth,
-                png::BitDepth::Eight,
-                "Only 32bit colors are supported"
-            );
-
-            let mut image_data = vec![0; (info.width * info.height * 4) as usize];
-            reader.next_frame(&mut image_data).unwrap();
-
             let image = ImmutableImage::from_iter(
                 gfx.get_allocator(),
-                image_data,
+                bytes(),
                 dimensions,
                 vulkano::image::MipmapsCount::One,
-                Format::R8G8B8A8_SRGB,
+                image_format,
                 &mut uploads,
             )
             .unwrap();
@@ -85,48 +194,51 @@ impl Texture {
             .then_signal_fence_and_flush()
             .unwrap();
 
-        let layout = Self::get_descriptor_set_layout(gfx, binding, use_nearest_neighbor);
+        let layout = Self::get_descriptor_set_layout(gfx, layout);
 
         fence.wait(None).unwrap();
 
         let set = PersistentDescriptorSet::new(
             gfx.get_descriptor_set_allocator(),
             layout.clone(),
-            [WriteDescriptorSet::image_view(binding, image.clone())],
+            [WriteDescriptorSet::image_view(0, image.clone())],
         )
         .unwrap();
 
-        Arc::new(Self {
+        let texture = Arc::new(Self {
             image: image,
             layout: layout,
             descriptor_set: set,
-        })
+        });
+        TEXTURE_CACHE
+            .write()
+            .unwrap()
+            .insert(texture_id, Arc::downgrade(&texture));
+        return texture;
     }
 
     fn get_descriptor_set_layout(
         gfx: &Graphics,
-        binding: u32,
-        use_nearest_neighbor: bool,
+        args: LayoutCreateArgs,
     ) -> Arc<DescriptorSetLayout> {
-        let layout_map = match use_nearest_neighbor {
-            true => &NEAREST_NEIGHBOR_LAYOUTS,
-            false => &LINEAR_LAYOUTS,
-        };
+        static LAYOUT_CACHE: LazyLock<
+            RwLock<HashMap<LayoutCreateArgs, Weak<DescriptorSetLayout>>>,
+        > = LazyLock::new(|| RwLock::new(HashMap::new()));
 
-        if let Some(layout) = layout_map.read().unwrap().get(&binding) {
-            return layout.clone();
+        if let Some(weak_ptr) = LAYOUT_CACHE.read().unwrap().get(&args) {
+            match weak_ptr.upgrade() {
+                Some(arc) => return arc,
+                None => {
+                    LAYOUT_CACHE.write().unwrap().remove(&args);
+                }
+            }
         }
-
-        let filter = match use_nearest_neighbor {
-            true => Filter::Nearest,
-            false => Filter::Linear,
-        };
 
         let sampler = Sampler::new(
             gfx.get_device(),
             SamplerCreateInfo {
-                min_filter: vulkano::sampler::Filter::Linear,
-                mag_filter: filter,
+                min_filter: args.min_filter,
+                mag_filter: args.mag_filter,
                 ..SamplerCreateInfo::simple_repeat_linear_no_mipmap()
             },
         )
@@ -136,9 +248,9 @@ impl Texture {
             gfx.get_device(),
             DescriptorSetLayoutCreateInfo {
                 bindings: [(
-                    binding,
+                    0,
                     DescriptorSetLayoutBinding {
-                        stages: ShaderStages::FRAGMENT,
+                        stages: args.shader_strages,
                         descriptor_count: 1,
                         variable_descriptor_count: false,
                         immutable_samplers: vec![sampler],
@@ -153,7 +265,10 @@ impl Texture {
         )
         .unwrap();
 
-        layout_map.write().unwrap().insert(binding, layout.clone());
+        LAYOUT_CACHE
+            .write()
+            .unwrap()
+            .insert(args, Arc::downgrade(&layout));
         return layout;
     }
 }

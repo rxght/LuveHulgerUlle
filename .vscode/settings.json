@@ -12,5 +12,9 @@
     "files.associations": {
         "*.tsx": "xml",
         "*.tmx": "xml"
-    }
+    },
+    "glsllint.glslangValidatorArgs": [
+        "-V"
+    ],
+    "rust-analyzer.inlayHints.parameterHints.enable": false
 }
