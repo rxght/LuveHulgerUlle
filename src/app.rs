@@ -85,17 +85,5 @@ impl App {
         }
         self.camera.update_buffer();
 
-        if self.input.keyboard.is_key_held(17).is_some() {
-            self.camera.position[1] -= 0.2;
-        }
-        if self.input.keyboard.is_key_held(30).is_some() {
-            self.camera.position[0] -= 0.2;
-        }
-        if self.input.keyboard.is_key_held(31).is_some() {
-            self.camera.position[1] += 0.2;
-        }
-        if self.input.keyboard.is_key_held(32).is_some() {
-            self.camera.position[0] += 0.2;
-        }
     }
 }
