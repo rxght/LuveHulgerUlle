@@ -29,7 +29,7 @@ impl<T> PushConstant<T>
 where
     T: BufferContents + Clone,
 {
-    pub fn new(_gfx: &Graphics, offset: u32, data: T, stages: ShaderStages) -> Arc<Self> {
+    pub fn new(offset: u32, data: T, stages: ShaderStages) -> Arc<Self> {
         let range = PushConstantRange {
             stages: stages,
             offset: offset,

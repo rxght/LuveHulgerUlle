@@ -1,8 +1,7 @@
 use std::{cell::Cell, sync::Arc};
 
 use vulkano::{
-    buffer::BufferContents, image::ImageViewAbstract, pipeline::graphics::vertex_input::Vertex,
-    shader::ShaderStages,
+    buffer::BufferContents, pipeline::graphics::vertex_input::Vertex, shader::ShaderStages,
 };
 
 use crate::graphics::{
@@ -42,7 +41,7 @@ impl UiImage {
             ShaderStages::VERTEX,
         );
 
-        let texture_size = texture.image.dimensions().width_height();
+        let texture_size = texture.dimensions().width_height();
         let uv_offset = [
             texture_mapping.x_position as f32 / texture_size[0] as f32,
             texture_mapping.y_position as f32 / texture_size[1] as f32,

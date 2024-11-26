@@ -1,20 +1,12 @@
 use core::f32;
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
-use cgmath::Vector2;
-use vulkano::{
-    buffer::BufferContents, image::ImageViewAbstract, pipeline::graphics::vertex_input::Vertex, sampler::Filter, shader::ShaderStages
-};
+use vulkano::{sampler::Filter, shader::ShaderStages};
 
-use crate::{
-    graphics::{
-        bindable::{self, PushConstant, Texture, UniformBuffer},
-        camera::Camera,
-        drawable::{DrawableEntry, GenericDrawable},
-        shaders::{frag_textured, vert_tile},
-        Graphics,
-    },
-    ui::Rectangle,
+use crate::graphics::{
+    bindable::{Texture, UniformBuffer},
+    shaders::vert_tile,
+    Graphics,
 };
 
 pub struct TileSet {
@@ -28,7 +20,7 @@ pub struct TileSet {
 impl TileSet {
     pub fn new(gfx: &Graphics, sheet_texture: &str, tile_width: u32) -> Arc<Self> {
         let atlas = Texture::new(gfx, sheet_texture, Filter::Nearest);
-        let atlas_dimensions = atlas.image.dimensions().width_height();
+        let atlas_dimensions = atlas.dimensions().width_height();
 
         let atlas_width = atlas_dimensions[0] / tile_width;
         let atlas_height = atlas_dimensions[1] / tile_width;
@@ -54,8 +46,8 @@ impl TileSet {
         let y = sprite_idx / self.atlas_width;
         let x = sprite_idx % self.atlas_width;
 
-        let uv_width = self.tile_width as f32 / self.atlas.image.dimensions().width() as f32;
-        let uv_height = self.tile_width as f32 / self.atlas.image.dimensions().height() as f32;
+        let uv_width = self.tile_width as f32 / self.atlas.dimensions().width() as f32;
+        let uv_height = self.tile_width as f32 / self.atlas.dimensions().height() as f32;
 
         let left = (x) as f32 * uv_width;
         let right = (x + 1) as f32 * uv_width;
@@ -63,17 +55,6 @@ impl TileSet {
         let bottom = (y + 1) as f32 * uv_height;
 
         [[left, top], [right, top], [left, bottom], [right, bottom]]
-    }
-
-    pub fn get_sprite_rectangle(&self, sprite_idx: u32) -> Rectangle {
-        let x = sprite_idx % self.atlas_width;
-        let y = sprite_idx / self.atlas_width;
-        Rectangle {
-            x_position: (x * self.tile_width) as i32,
-            y_position: (y * self.tile_width) as i32,
-            width: self.tile_width,
-            height: self.tile_width,
-        }
     }
 
     pub fn get_texture(&self) -> Arc<Texture> {

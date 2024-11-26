@@ -15,11 +15,7 @@ pub enum ButtonState {
     Released,
 }
 
-const BUTTON_HELD_THRESHOLD: std::time::Duration = std::time::Duration::from_millis(300);
-
 pub struct Input {
-    window: Arc<Window>,
-
     pub keyboard: Keyboard,
     keyboard_event_handler: fn(&Keyboard, &Event<'_, ()>) -> bool,
 
@@ -28,12 +24,11 @@ pub struct Input {
 }
 
 impl Input {
-    pub fn new(window: Arc<Window>) -> Arc<Self> {
+    pub fn new() -> Arc<Self> {
         let (keyboard, keyboard_event_handler) = Keyboard::new();
         let (mouse, mouse_event_handler) = Mouse::new();
 
         Arc::new(Self {
-            window: window,
             keyboard: keyboard,
             keyboard_event_handler: keyboard_event_handler,
             mouse: mouse,

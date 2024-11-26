@@ -1,7 +1,9 @@
 use winit::dpi::PhysicalSize;
 
+use crate::drawables::tiles::DynamicTile;
 use crate::drawables::tiles::TileMap;
 use crate::drawables::tiles::TileMapLoader;
+use crate::graphics::bindable::Texture;
 use crate::graphics::camera::Camera;
 use crate::graphics::Graphics;
 use crate::input::Input;
@@ -13,6 +15,7 @@ pub struct App {
     input: Arc<Input>,
     tile_map_loader: TileMapLoader,
     tile_map: Arc<TileMap>,
+    dynamic_tile: DynamicTile,
     last_frame_change: std::time::Instant,
     camera: Camera,
     main_ui_scene: Arc<UiScene>,
@@ -24,7 +27,7 @@ impl App {
         let camera = Camera::new(gfx, [0.0, 0.0], 1.0, 0.0);
 
         let mut loader = TileMapLoader::new(gfx);
-        let tile_map = loader.load(gfx, "assets/tilemaps/bigmap.tmx", &camera);
+        let tile_map = loader.load(gfx, "assets\\tilemaps\\bigmap.tmx", &camera);
 
         tile_map
             .layers
@@ -41,11 +44,18 @@ impl App {
         });
         ui.set_scene(gfx, main_ui_scene.clone());
 
+        let character_texture =
+            Texture::new_array(gfx, "assets\\textures\\character_test.png", [32, 48]);
+        let character = DynamicTile::new(gfx, character_texture, &camera);
+
+        gfx.register_drawable(&character.drawable);
+
         Self {
             input,
             tile_map_loader: loader,
             tile_map,
             last_frame_change: std::time::Instant::now(),
+            dynamic_tile: character,
             camera,
             main_ui_scene,
             ui,

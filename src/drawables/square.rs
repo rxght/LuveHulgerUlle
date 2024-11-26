@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use cgmath::Vector2;
 use vulkano::{
     buffer::BufferContents, pipeline::graphics::vertex_input::Vertex, shader::ShaderStages,
 };
@@ -8,7 +7,7 @@ use vulkano::{
 use crate::graphics::{
     bindable::{self, PushConstant, UniformBuffer, UniformBufferBinding},
     drawable::{DrawableEntry, GenericDrawable},
-    shaders::{frag_color, frag_solid_white, vert_square},
+    shaders::{frag_color, vert_square},
     Graphics,
 };
 
@@ -27,7 +26,6 @@ pub struct SquareDesc {
 impl Square {
     pub fn new(gfx: &Graphics, square: SquareDesc, color: [f32; 4]) -> Self {
         let data = PushConstant::new(
-            gfx,
             0,
             vert_square::LayoutData {
                 position: [square.pos[0] as f32, square.pos[1] as f32],

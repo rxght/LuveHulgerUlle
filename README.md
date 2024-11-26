@@ -5,6 +5,7 @@
 * Add support for map objects (should make chests possible)
 
 ### Necessary fixes
+* Change TileMap struct to use a texture array instead of a normal texture
 * Add a draw() function that replaces register_drawable() and unregister_drawable()
 
 ### Possible Optimizations

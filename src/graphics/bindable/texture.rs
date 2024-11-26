@@ -1,5 +1,8 @@
 use std::{
-    collections::HashMap, hash::{BuildHasher, Hash, Hasher}, sync::{Arc, LazyLock, RwLock, Weak}
+    cell::UnsafeCell,
+    collections::HashMap,
+    hash::{BuildHasher, Hash, Hasher},
+    sync::{Arc, LazyLock, RwLock, Weak},
 };
 
 use vulkano::{
@@ -12,7 +15,10 @@ use vulkano::{
         PersistentDescriptorSet, WriteDescriptorSet,
     },
     format::Format,
-    image::{view::ImageView, ImageDimensions, ImmutableImage},
+    image::{
+        view::{ImageView, ImageViewCreateInfo},
+        ImageDimensions, ImageViewAbstract, ImmutableImage,
+    },
     sampler::{Filter, Sampler, SamplerCreateInfo},
     shader::ShaderStages,
     sync::GpuFuture,
@@ -23,7 +29,7 @@ use crate::graphics::{pipeline::PipelineBuilder, Graphics};
 use super::Bindable;
 
 pub struct Texture {
-    pub image: Arc<ImageView<ImmutableImage>>,
+    image_view: Arc<ImageView<ImmutableImage>>,
     layout: Arc<DescriptorSetLayout>,
     descriptor_set: Arc<PersistentDescriptorSet>,
 }
@@ -36,6 +42,10 @@ struct LayoutCreateArgs {
 }
 
 impl Texture {
+    pub fn dimensions(&self) -> ImageDimensions {
+        self.image_view.dimensions()
+    }
+
     pub fn new(gfx: &Graphics, path: &str, filter: Filter) -> Arc<Texture> {
         let source_file = std::fs::File::open(path).unwrap();
 
@@ -83,14 +93,14 @@ impl Texture {
             height: layer_dimensions[1],
             array_layers: cols * rows,
         };
-        
+
         assert!(image_info.bytes_per_pixel() == 4);
 
         let bytes_closure = || {
             let mut reader = decoder.read_info().unwrap();
             let mut buffer = vec![0; reader.output_buffer_size()];
             reader.next_frame(&mut buffer).unwrap();
-            
+
             let mut rearranged_image_data = vec![0u8; buffer.len()];
             let chunk_size = 4 * layer_dimensions[0] as usize;
 
@@ -98,7 +108,7 @@ impl Texture {
                 let chunks_per_layer = layer_dimensions[1] as usize;
                 let chunks_per_row = cols as usize;
                 let layers_per_row = chunks_per_row;
-                
+
                 let chunk_x = i % chunks_per_row;
                 let chunk_y = i / chunks_per_row;
 
@@ -106,14 +116,14 @@ impl Texture {
                 let layer_y = chunk_y / chunks_per_layer;
 
                 let layer_idx = layer_x + layer_y * layers_per_row;
-                
 
                 let target_chunk_idx = chunks_per_layer * layer_idx + chunk_y % chunks_per_layer;
 
                 let target_chunk_start = target_chunk_idx * chunk_size;
                 let target_chunk_end = target_chunk_start + chunk_size;
 
-                rearranged_image_data[target_chunk_start..target_chunk_end].clone_from_slice(source_chunk);
+                rearranged_image_data[target_chunk_start..target_chunk_end]
+                    .clone_from_slice(source_chunk);
             }
             rearranged_image_data
         };
@@ -167,24 +177,23 @@ impl Texture {
         )
         .unwrap();
 
-        let image = {
-            let dimensions = ImageDimensions::Dim2d {
-                width: 0,
-                height: 0,
-                array_layers: 1,
-            };
+        let image = ImmutableImage::from_iter(
+            gfx.get_allocator(),
+            bytes(),
+            dimensions,
+            vulkano::image::MipmapsCount::One,
+            image_format,
+            &mut uploads,
+        )
+        .unwrap();
 
-            let image = ImmutableImage::from_iter(
-                gfx.get_allocator(),
-                bytes(),
-                dimensions,
-                vulkano::image::MipmapsCount::One,
-                image_format,
-                &mut uploads,
-            )
-            .unwrap();
-            ImageView::new_default(image).unwrap()
-        };
+        let image_view = ImageView::new(
+            image.clone(),
+            ImageViewCreateInfo {
+                ..ImageViewCreateInfo::from_image(&image)
+            },
+        )
+        .unwrap();
 
         let fence = uploads
             .build()
@@ -201,12 +210,12 @@ impl Texture {
         let set = PersistentDescriptorSet::new(
             gfx.get_descriptor_set_allocator(),
             layout.clone(),
-            [WriteDescriptorSet::image_view(0, image.clone())],
+            [WriteDescriptorSet::image_view(0, image_view.clone())],
         )
         .unwrap();
 
         let texture = Arc::new(Self {
-            image: image,
+            image_view,
             layout: layout,
             descriptor_set: set,
         });
@@ -274,22 +283,32 @@ impl Texture {
 }
 
 pub struct TextureBinding {
-    texture_ref: Arc<Texture>,
+    texture_ref: UnsafeCell<Arc<Texture>>,
     set_num: u32,
 }
 
 impl TextureBinding {
     pub fn new(texture: Arc<Texture>, set_num: u32) -> Arc<Self> {
         Arc::new(Self {
-            texture_ref: texture,
+            texture_ref: UnsafeCell::new(texture),
             set_num: set_num,
         })
+    }
+
+    pub fn set_texture(&self, texture: Arc<Texture>) {
+        unsafe { *self.texture_ref.get() = texture };
+    }
+    pub fn get_texture(&self) -> Arc<Texture> {
+        unsafe { &*self.texture_ref.get() }.clone()
     }
 }
 
 impl Bindable for TextureBinding {
     fn bind_to_pipeline(&self, builder: &mut PipelineBuilder) {
-        builder.add_descriptor_set_layout(self.set_num, self.texture_ref.layout.clone());
+        builder.add_descriptor_set_layout(
+            self.set_num,
+            unsafe { &*self.texture_ref.get() }.layout.clone(),
+        );
     }
 
     fn bind(
@@ -305,7 +324,7 @@ impl Bindable for TextureBinding {
             vulkano::pipeline::PipelineBindPoint::Graphics,
             pipeline_layout,
             self.set_num,
-            self.texture_ref.descriptor_set.clone(),
+            unsafe { &*self.texture_ref.get() }.descriptor_set.clone(),
         );
     }
 }

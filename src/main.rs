@@ -22,7 +22,7 @@ fn main() {
     let (mut gfx, event_loop) = Graphics::new();
     let mut window_size = gfx.get_window().inner_size();
 
-    let input = input::Input::new(gfx.get_window());
+    let input = input::Input::new();
     let ui = Ui::new();
 
     // initialize app and pass it a reference to each subsystem

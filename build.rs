@@ -5,46 +5,59 @@ use std::{
     path::Path,
 };
 
-use shaderc;
-
 fn main() {
-    println!("cargo:rerun-if-changed=shaders/src");
     compile_shaders();
     generate_shader_modules();
 }
 
 fn compile_shaders() {
+    println!("cargo:rerun-if-changed=*");
     let out_folder: &Path = Path::new("./shaders/");
     let source_folder: &Path = Path::new("./shaders/src/");
-
-    // delete all compiled shaders
-    if let Ok(directory) = out_folder.read_dir() {
-        for entry in directory {
-            let _ = entry.and_then(|entry| std::fs::remove_file(entry.path()));
-        }
-    }
 
     let shader_sources = fs::read_dir(source_folder).unwrap();
     for shader_source in shader_sources {
         match shader_source {
             Err(_) => continue,
             Ok(file) => {
-                let out_file_path = out_folder.join(file.file_name().to_str().unwrap());
-                let file_path = file.path();
+                let output_path = out_folder.join(file.file_name().to_str().unwrap());
+                let source_path = file.path();
 
-                let in_file = file_path.to_str().unwrap();
+                let output_modification_time =
+                    File::open(output_path.clone()).ok().and_then(|file| {
+                        file.metadata()
+                            .ok()
+                            .and_then(|metadata| metadata.modified().ok())
+                    });
 
-                let shader_kind = match file_path.extension().unwrap().to_str().unwrap() {
+                let source_modification_time = file
+                    .metadata()
+                    .ok()
+                    .and_then(|metadata| metadata.modified().ok());
+
+                // figure out if the output file already is up to date
+                if let (Some(source_time), Some(output_time)) =
+                    (source_modification_time, output_modification_time)
+                {
+                    println!("{source_time:?}, {output_time:?}");
+                    if output_time >= source_time {
+                        continue;
+                    }
+                }
+
+                let in_file = source_path.to_str().unwrap();
+
+                let shader_kind = match source_path.extension().unwrap().to_str().unwrap() {
                     "vert" => shaderc::ShaderKind::Vertex,
                     "frag" => shaderc::ShaderKind::Fragment,
                     "glsl" => shaderc::ShaderKind::InferFromSource,
                     _ => continue,
                 };
 
-                let mut source = String::new();
-                File::open(&file_path)
+                let mut source_content = String::new();
+                File::open(&source_path)
                     .unwrap()
-                    .read_to_string(&mut source)
+                    .read_to_string(&mut source_content)
                     .unwrap();
 
                 let compiler = shaderc::Compiler::new().unwrap();
@@ -54,11 +67,19 @@ fn compile_shaders() {
                     shaderc::TargetEnv::Vulkan,
                     shaderc::EnvVersion::Vulkan1_3 as u32,
                 );
+                #[cfg(debug_assertions)]
+                options.set_generate_debug_info();
                 let binary_result = compiler
-                    .compile_into_spirv(&source, shader_kind, in_file, "main", None)
+                    .compile_into_spirv(
+                        &source_content,
+                        shader_kind,
+                        in_file,
+                        "main",
+                        Some(&options),
+                    )
                     .unwrap();
 
-                let mut compiled_file = File::create(out_file_path).unwrap();
+                let mut compiled_file = File::create(output_path).unwrap();
                 compiled_file.write(binary_result.as_binary_u8()).unwrap();
             }
         }
