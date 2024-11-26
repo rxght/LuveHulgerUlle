@@ -5,7 +5,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "(Windows) Launch",
+            "name": "Cpp Debug",
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceRoot}/target/debug/batako.exe",
@@ -15,7 +15,7 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'batako'",
+            "name": "LLDB Debug",
             "cargo": {
                 "args": [
                     "build",
@@ -33,7 +33,7 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in executable 'batako'",
+            "name": "LLDB Debug Unit Tests",
             "cargo": {
                 "args": [
                     "test",
