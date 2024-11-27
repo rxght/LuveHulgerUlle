@@ -10,3 +10,4 @@
 
 ### Possible Optimizations
 * Split tile maps into chunks and only render chunks that are visible. (This may be slower in some cases. May only be useful for really large maps)
+* Add push descriptor functionality for textures.
