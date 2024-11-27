@@ -12,14 +12,15 @@ layout( set = 2, binding = 0) uniform CameraUbo {
     mat4 camera;
 };
 
-layout( push_constant ) uniform FrameData {
-    float frame_idx;
-    float tile_width;
-    float tile_height;
+layout( push_constant ) uniform ObjectData {
+    vec2 position;
+    vec2 dimensions;
+    float layer_idx;
 };
 
 void main()
 {
-    gl_Position =  cartesian_to_normalized * camera * vec4(pos * vec2(tile_width, -tile_height), 0.0f, 1.0f);
-    out_uv = vec3(pos, frame_idx);
+    vec2 vertex_pos = vec2(pos.x, -pos.y) * dimensions;
+    gl_Position =  cartesian_to_normalized * camera * vec4(vertex_pos + position, 0.0f, 1.0f);
+    out_uv = vec3(pos, layer_idx);
 }

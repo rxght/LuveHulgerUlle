@@ -24,8 +24,8 @@ fn main() {
 
     let input = input::Input::new();
     let ui = Ui::new();
+    let mut last_frame_time = std::time::Instant::now();
 
-    // initialize app and pass it a reference to each subsystem
     let mut app = App::new(&mut gfx, input.clone(), ui.clone());
 
     let mut minimized = false;
@@ -66,7 +66,10 @@ fn main() {
                     window_size = window_inner_size;
                     minimized = check_minimized(window);
                 }
-                app.run(&gfx);
+                let frame_time = std::time::Instant::now();
+                let delta_time = frame_time - last_frame_time;
+                last_frame_time = frame_time;
+                app.run(&gfx, delta_time);
                 input.clear_presses();
                 if !minimized {
                     gfx.draw_frame()

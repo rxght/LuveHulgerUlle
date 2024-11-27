@@ -1,21 +1,23 @@
+use character::CharacterController;
 use winit::dpi::PhysicalSize;
 
-use crate::drawables::tiles::DynamicTile;
 use crate::drawables::tiles::TileMap;
 use crate::drawables::tiles::TileMapLoader;
-use crate::graphics::bindable::Texture;
 use crate::graphics::camera::Camera;
 use crate::graphics::Graphics;
 use crate::input::Input;
 use crate::ui::Ui;
 use crate::ui::UiScene;
 use std::sync::Arc;
+use std::time::Duration;
+
+mod character;
 
 pub struct App {
     input: Arc<Input>,
     tile_map_loader: TileMapLoader,
     tile_map: Arc<TileMap>,
-    dynamic_tile: DynamicTile,
+    player: CharacterController,
     last_frame_change: std::time::Instant,
     camera: Camera,
     main_ui_scene: Arc<UiScene>,
@@ -44,18 +46,15 @@ impl App {
         });
         ui.set_scene(gfx, main_ui_scene.clone());
 
-        let character_texture =
-            Texture::new_array(gfx, "assets\\textures\\character_test.png", [32, 48]);
-        let character = DynamicTile::new(gfx, character_texture, &camera);
-
-        gfx.register_drawable(&character.drawable);
+        let player = CharacterController::new(gfx, &camera);
+        gfx.register_drawable(&player.tile_renderer.drawable);
 
         Self {
             input,
             tile_map_loader: loader,
             tile_map,
             last_frame_change: std::time::Instant::now(),
-            dynamic_tile: character,
+            player,
             camera,
             main_ui_scene,
             ui,
@@ -66,24 +65,19 @@ impl App {
         gfx.recreate_swapchain();
     }
 
-    pub fn run(&mut self, _gfx: &Graphics) {
+    pub fn run(&mut self, _gfx: &Graphics, delta_time: Duration) {
+
+        self.player.update(&self.input, delta_time);
+        self.camera.position = *self.player.position();
         self.editor_camera_movement();
         self.tile_map_loader.update();
     }
 
     fn editor_camera_movement(&mut self) {
         self.camera.zoom *= 1.0 + self.input.mouse.scroll_wheel_movement.get() / 10.0;
-        if self.input.keyboard.is_key_held(56).is_some() {
-            if self.input.mouse.is_button_held(1).is_some() {
-                let mouse_movement = self.input.mouse.mouse_movement.get();
-                self.camera.position[0] -= mouse_movement.x as f32 / self.camera.zoom;
-                self.camera.position[1] -= mouse_movement.y as f32 / self.camera.zoom;
-            }
-        }
         if self.input.keyboard.is_key_pressed(57) {
             self.camera.zoom = self.camera.zoom.ceil();
         }
         self.camera.update_buffer();
-
     }
 }

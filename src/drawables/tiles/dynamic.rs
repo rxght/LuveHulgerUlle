@@ -5,7 +5,7 @@ use vulkano::{
 };
 
 use crate::graphics::{
-    bindable::{self, Texture, TextureBinding},
+    bindable::{self, PushConstant, Texture, TextureBinding},
     camera::Camera,
     drawable::{DrawableEntry, GenericDrawable},
     shaders::{frag_texture_2DArray, vert_tile2},
@@ -21,7 +21,7 @@ struct VertexT {
 
 pub struct DynamicTile {
     texture: Arc<TextureBinding>,
-    frame_data: Arc<bindable::PushConstant<vert_tile2::FrameData>>,
+    object_data: Arc<bindable::PushConstant<vert_tile2::ObjectData>>,
     pub drawable: DrawableEntry,
 }
 
@@ -33,12 +33,12 @@ impl DynamicTile {
             "Dynamic tile requires a texture with multiple layers."
         );
 
-        let frame_data = bindable::PushConstant::new(
+        let object_data = bindable::PushConstant::new(
             0,
-            vert_tile2::FrameData {
-                frame_idx: 0.0,
-                tile_width: tile_dimensions[0] as f32,
-                tile_height: tile_dimensions[1] as f32,
+            vert_tile2::ObjectData {
+                position: [0.0, 0.0],
+                dimensions: [tile_dimensions[0] as f32, tile_dimensions[1] as f32],
+                layer_idx: 0.0,
             },
             ShaderStages::VERTEX,
         );
@@ -47,7 +47,7 @@ impl DynamicTile {
 
         let entry = GenericDrawable::new(
             gfx,
-            || vec![frame_data.clone()],
+            || vec![object_data.clone()],
             || {
                 let vertices = vec![
                     VertexT { pos: [0.0, 0.0] },
@@ -80,23 +80,34 @@ impl DynamicTile {
 
         Self {
             texture: texture_binding,
-            frame_data,
+            object_data,
             drawable: entry,
         }
     }
 
     pub fn set_texture(&self, texture: Arc<Texture>) {
-        let new_dimensions = texture.dimensions().width_height();
-        self.frame_data.access_data(|data| {
-            data.tile_width = new_dimensions[0] as f32;
-            data.tile_width = new_dimensions[1] as f32;
-        });
         self.texture.set_texture(texture);
     }
 
-    pub fn set_layer(&self, layer: u32) {
-        self.frame_data.access_data(|data| {
-            data.frame_idx = layer as f32;
+    pub fn set_dimensions(&self, dimensions:  [f32; 2]) {
+        self.object_data.access_data(|data| {
+            data.dimensions = dimensions;
         });
+    }
+
+    pub fn set_position(&self, position: [f32; 2]) {
+        self.object_data.access_data(|data| {
+            data.position = position;
+        });
+    }
+
+    pub fn set_layer(&self, layer: u32) {
+        self.object_data.access_data(|data| {
+            data.layer_idx = layer as f32;
+        });
+    }
+    
+    pub fn object_data(&self) -> &PushConstant<vert_tile2::ObjectData> {
+        &self.object_data
     }
 }
