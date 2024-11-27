@@ -16,8 +16,7 @@ use vulkano::{
     },
     format::Format,
     image::{
-        view::{ImageView, ImageViewCreateInfo},
-        ImageDimensions, ImageViewAbstract, ImmutableImage,
+        view::{ImageView, ImageViewCreateInfo}, ImageDimensions, ImageViewAbstract, ImageViewType, ImmutableImage
     },
     sampler::{Filter, Sampler, SamplerCreateInfo},
     shader::ShaderStages,
@@ -70,6 +69,7 @@ impl Texture {
                 buffer
             },
             image_dimensions,
+            false,
             Format::R8G8B8A8_SRGB,
             LayoutCreateArgs {
                 shader_strages: ShaderStages::FRAGMENT,
@@ -133,6 +133,7 @@ impl Texture {
             path,
             bytes_closure,
             image_dimensions,
+            true,
             Format::R8G8B8A8_SRGB,
             LayoutCreateArgs {
                 shader_strages: ShaderStages::FRAGMENT,
@@ -147,6 +148,7 @@ impl Texture {
         source_file_name: &str,
         bytes: impl FnOnce() -> I,
         dimensions: ImageDimensions,
+        is_arrayed: bool,
         image_format: Format,
         layout: LayoutCreateArgs,
     ) -> Arc<Self>
@@ -159,15 +161,11 @@ impl Texture {
         let hasher = &mut TEXTURE_CACHE.read().unwrap().hasher().build_hasher();
         source_file_name.hash(hasher);
         dimensions.width_height_depth().hash(hasher);
+        is_arrayed.hash(hasher);
         let texture_id = hasher.finish();
 
-        if let Some(weak_ptr) = TEXTURE_CACHE.read().unwrap().get(&texture_id) {
-            match weak_ptr.upgrade() {
-                Some(arc) => return arc,
-                None => {
-                    TEXTURE_CACHE.write().unwrap().remove(&texture_id);
-                }
-            }
+        if let Some(texture) = TEXTURE_CACHE.read().unwrap().get(&texture_id).and_then(Weak::upgrade) {
+            return texture;
         }
 
         let mut uploads = AutoCommandBufferBuilder::primary(
@@ -187,25 +185,33 @@ impl Texture {
         )
         .unwrap();
 
-        let image_view = ImageView::new(
-            image.clone(),
-            ImageViewCreateInfo {
-                ..ImageViewCreateInfo::from_image(&image)
-            },
-        )
-        .unwrap();
-
-        let fence = uploads
+        uploads
             .build()
             .unwrap()
             .execute(gfx.graphics_queue())
             .unwrap()
-            .then_signal_fence_and_flush()
+            .flush()
             .unwrap();
 
-        let layout = Self::get_descriptor_set_layout(gfx, layout);
+        let view_type = match ( dimensions, is_arrayed ) {
+            (ImageDimensions::Dim1d { .. }, true) => ImageViewType::Dim1dArray,
+            (ImageDimensions::Dim1d { .. }, false) => ImageViewType::Dim1d,
+            (ImageDimensions::Dim2d { .. }, true) => ImageViewType::Dim2dArray,
+            (ImageDimensions::Dim2d { .. }, false) => ImageViewType::Dim2d,
+            (ImageDimensions::Dim3d { .. }, false) => ImageViewType::Dim3d,
+            (ImageDimensions::Dim3d { .. }, true) => panic!("A 3d texture can't be arrayed."),
+        };
 
-        fence.wait(None).unwrap();
+        let image_view = ImageView::new(
+            image.clone(),
+            ImageViewCreateInfo {
+                view_type,
+                ..ImageViewCreateInfo::from_image(&image)
+            },
+        )
+        .unwrap();
+    
+        let layout = Self::get_descriptor_set_layout(gfx, layout);
 
         let set = PersistentDescriptorSet::new(
             gfx.get_descriptor_set_allocator(),
@@ -219,10 +225,9 @@ impl Texture {
             layout: layout,
             descriptor_set: set,
         });
-        TEXTURE_CACHE
-            .write()
-            .unwrap()
-            .insert(texture_id, Arc::downgrade(&texture));
+
+        TEXTURE_CACHE.write().unwrap().insert(texture_id, Arc::downgrade(&texture));
+
         return texture;
     }
 
