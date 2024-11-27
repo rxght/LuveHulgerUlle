@@ -66,7 +66,6 @@ impl App {
     }
 
     pub fn run(&mut self, _gfx: &Graphics, delta_time: Duration) {
-
         self.player.update(&self.input, delta_time);
         self.camera.position = *self.player.position();
         self.editor_camera_movement();

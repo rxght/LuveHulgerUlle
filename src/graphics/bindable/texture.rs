@@ -16,7 +16,8 @@ use vulkano::{
     },
     format::Format,
     image::{
-        view::{ImageView, ImageViewCreateInfo}, ImageDimensions, ImageViewAbstract, ImageViewType, ImmutableImage
+        view::{ImageView, ImageViewCreateInfo},
+        ImageDimensions, ImageViewAbstract, ImageViewType, ImmutableImage,
     },
     sampler::{Filter, Sampler, SamplerCreateInfo},
     shader::ShaderStages,
@@ -164,7 +165,12 @@ impl Texture {
         is_arrayed.hash(hasher);
         let texture_id = hasher.finish();
 
-        if let Some(texture) = TEXTURE_CACHE.read().unwrap().get(&texture_id).and_then(Weak::upgrade) {
+        if let Some(texture) = TEXTURE_CACHE
+            .read()
+            .unwrap()
+            .get(&texture_id)
+            .and_then(Weak::upgrade)
+        {
             return texture;
         }
 
@@ -193,7 +199,7 @@ impl Texture {
             .flush()
             .unwrap();
 
-        let view_type = match ( dimensions, is_arrayed ) {
+        let view_type = match (dimensions, is_arrayed) {
             (ImageDimensions::Dim1d { .. }, true) => ImageViewType::Dim1dArray,
             (ImageDimensions::Dim1d { .. }, false) => ImageViewType::Dim1d,
             (ImageDimensions::Dim2d { .. }, true) => ImageViewType::Dim2dArray,
@@ -210,7 +216,7 @@ impl Texture {
             },
         )
         .unwrap();
-    
+
         let layout = Self::get_descriptor_set_layout(gfx, layout);
 
         let set = PersistentDescriptorSet::new(
@@ -226,7 +232,10 @@ impl Texture {
             descriptor_set: set,
         });
 
-        TEXTURE_CACHE.write().unwrap().insert(texture_id, Arc::downgrade(&texture));
+        TEXTURE_CACHE
+            .write()
+            .unwrap()
+            .insert(texture_id, Arc::downgrade(&texture));
 
         return texture;
     }

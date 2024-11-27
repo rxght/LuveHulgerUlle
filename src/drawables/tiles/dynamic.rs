@@ -89,7 +89,7 @@ impl DynamicTile {
         self.texture.set_texture(texture);
     }
 
-    pub fn set_dimensions(&self, dimensions:  [f32; 2]) {
+    pub fn set_dimensions(&self, dimensions: [f32; 2]) {
         self.object_data.access_data(|data| {
             data.dimensions = dimensions;
         });
@@ -106,7 +106,7 @@ impl DynamicTile {
             data.layer_idx = layer as f32;
         });
     }
-    
+
     pub fn object_data(&self) -> &PushConstant<vert_tile2::ObjectData> {
         &self.object_data
     }

@@ -1,6 +1,10 @@
 use std::{cmp::Ordering, f32::consts::SQRT_2, path::Path, sync::Arc, time::Duration};
 
-use crate::{drawables::tiles::DynamicTile, graphics::{bindable::Texture, camera::Camera, Graphics}, input::Input};
+use crate::{
+    drawables::tiles::DynamicTile,
+    graphics::{bindable::Texture, camera::Camera, Graphics},
+    input::Input,
+};
 
 #[derive(Clone, Copy)]
 enum Direction {
@@ -32,7 +36,6 @@ pub struct CharacterController {
 
 impl CharacterController {
     pub fn new(gfx: &Graphics, camera: &Camera) -> Self {
-
         let folder = Path::new("assets\\textures\\characters\\test_character\\");
         let dimensions = [32, 48];
 
@@ -42,9 +45,21 @@ impl CharacterController {
             Texture::new_array(gfx, folder.join("left.png").to_str().unwrap(), dimensions),
             Texture::new_array(gfx, folder.join("right.png").to_str().unwrap(), dimensions),
             Texture::new_array(gfx, folder.join("upleft.png").to_str().unwrap(), dimensions),
-            Texture::new_array(gfx, folder.join("upright.png").to_str().unwrap(), dimensions),
-            Texture::new_array(gfx, folder.join("downleft.png").to_str().unwrap(), dimensions),
-            Texture::new_array(gfx, folder.join("downright.png").to_str().unwrap(), dimensions),
+            Texture::new_array(
+                gfx,
+                folder.join("upright.png").to_str().unwrap(),
+                dimensions,
+            ),
+            Texture::new_array(
+                gfx,
+                folder.join("downleft.png").to_str().unwrap(),
+                dimensions,
+            ),
+            Texture::new_array(
+                gfx,
+                folder.join("downright.png").to_str().unwrap(),
+                dimensions,
+            ),
             Texture::new_array(gfx, folder.join("idle.png").to_str().unwrap(), dimensions),
         ];
 
@@ -58,7 +73,7 @@ impl CharacterController {
             direction: Direction::Down,
             last_frame_time: std::time::Instant::now(),
             frame_idx: 1,
-            position: [0.0, 0.0]
+            position: [0.0, 0.0],
         }
     }
 
@@ -67,7 +82,6 @@ impl CharacterController {
     }
 
     pub fn update(&mut self, input: &Input, delta_time: Duration) {
-        
         let mut x_movement = 0;
         let mut y_movement = 0;
         if input.keyboard.is_key_held(17).is_some() {
@@ -87,8 +101,7 @@ impl CharacterController {
 
         if x_movement == 0 && y_movement == 0 {
             is_moving = false;
-        }
-        else {
+        } else {
             is_moving = true;
             self.direction = match (x_movement.cmp(&0), y_movement.cmp(&0)) {
                 (Ordering::Equal, Ordering::Greater) => Direction::Up,
@@ -113,7 +126,7 @@ impl CharacterController {
                     self.last_frame_time = std::time::Instant::now();
                     self.state = CharacterState::Walking;
                     frame_idx = 0;
-                },
+                }
                 CharacterState::Walking => {
                     if self.last_frame_time.elapsed().as_millis() > frame_interval {
                         self.last_frame_time = std::time::Instant::now();
@@ -121,11 +134,10 @@ impl CharacterController {
                     } else {
                         frame_idx = self.frame_idx;
                     }
-                },
+                }
             };
             texture_idx = self.direction as usize;
-        }
-        else {
+        } else {
             self.state = CharacterState::Idle;
             frame_idx = match self.direction {
                 Direction::Up => 5,
@@ -161,6 +173,7 @@ impl CharacterController {
             data.position = self.position;
         });
 
-        self.tile_renderer.set_texture(self.textures[texture_idx].clone());
+        self.tile_renderer
+            .set_texture(self.textures[texture_idx].clone());
     }
 }
