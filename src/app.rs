@@ -29,7 +29,7 @@ impl App {
         let camera = Camera::new(gfx, [0.0, 0.0], 1.0, 0.0);
 
         let mut loader = TileMapLoader::new();
-        let tile_map = loader.load(gfx, "assets\\tilemaps\\bigmap.tmx", &camera);
+        let tile_map = loader.load(gfx, "assets\\tilemaps\\animated.tmx", &camera);
 
         tile_map
             .layers
@@ -39,7 +39,7 @@ impl App {
         let main_ui_scene = UiScene(vec![]);
 
         let main_ui_scene = Arc::new(main_ui_scene);
-        
+
         gfx.get_window().set_inner_size(PhysicalSize {
             width: 1200,
             height: 800,
