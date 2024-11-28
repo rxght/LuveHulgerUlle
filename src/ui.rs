@@ -3,7 +3,7 @@ use std::{cell::UnsafeCell, sync::Arc};
 use winit::event::{DeviceEvent, ElementState, Event};
 
 use crate::{
-    graphics::{drawable::DrawableEntry, Graphics},
+    graphics::{drawable::Drawable, Graphics},
     input::Input,
 };
 
@@ -28,16 +28,13 @@ impl Ui {
         })
     }
 
-    pub fn set_scene(&self, gfx: &mut Graphics, scene: Arc<UiScene>) {
-        let current_scene = unsafe { self.scene.get().as_mut().unwrap() };
-        for old_element in current_scene.0.iter() {
-            // unregister drawables from the old scene
-            gfx.unregister_drawable(old_element.get_drawable_entry());
-        }
-        *current_scene = scene;
-        for new_elem in current_scene.0.iter() {
-            // register drawables from the new scene
-            gfx.register_drawable(new_elem.get_drawable_entry());
+    pub fn set_scene(&self, scene: Arc<UiScene>) {
+        unsafe { *self.scene.get().as_mut().unwrap() = scene };
+    }
+
+    pub fn draw(&self, gfx: &mut Graphics) {
+        for element in unsafe { &*self.scene.get() }.0.iter() {
+            gfx.queue_drawable(element.get_drawable());
         }
     }
 
@@ -162,7 +159,7 @@ impl UiLayout {
 
 pub trait UiElement {
     fn handle_resize(&self, new_size: [u32; 2]);
-    fn get_drawable_entry(&self) -> &DrawableEntry;
+    fn get_drawable(&self) -> Arc<Drawable>;
     fn get_layout(&self) -> NormalizedRectangle;
     fn handle_event(&self, _event: &DeviceEvent) -> bool {
         false

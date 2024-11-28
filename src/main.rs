@@ -69,7 +69,8 @@ fn main() {
                 let frame_time = std::time::Instant::now();
                 let delta_time = frame_time - last_frame_time;
                 last_frame_time = frame_time;
-                app.run(&gfx, delta_time);
+                app.run(&mut gfx, delta_time);
+                ui.draw(&mut gfx);
                 input.clear_presses();
                 if !minimized {
                     gfx.draw_frame()

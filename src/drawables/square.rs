@@ -6,13 +6,13 @@ use vulkano::{
 
 use crate::graphics::{
     bindable::{self, PushConstant, UniformBuffer, UniformBufferBinding},
-    drawable::{DrawableEntry, GenericDrawable},
+    drawable::Drawable,
     shaders::{frag_color, vert_square},
     Graphics,
 };
 
 pub struct Square {
-    pub drawable_entry: DrawableEntry,
+    drawable: Arc<Drawable>,
     pub data: Arc<PushConstant<vert_square::LayoutData>>,
 }
 
@@ -34,22 +34,20 @@ impl Square {
             ShaderStages::VERTEX,
         );
 
-        let drawable_entry = GenericDrawable::new(
+        let drawable = Drawable::new(
             gfx,
-            || {
-                vec![
-                    data.clone(),
-                    bindable::UniformBufferBinding::new(
-                        UniformBuffer::new(
-                            gfx,
-                            0,
-                            frag_color::ColorData { color },
-                            ShaderStages::FRAGMENT,
-                        ),
-                        1,
+            vec![
+                data.clone(),
+                bindable::UniformBufferBinding::new(
+                    UniformBuffer::new(
+                        gfx,
+                        0,
+                        frag_color::ColorData { color },
+                        ShaderStages::FRAGMENT,
                     ),
-                ]
-            },
+                    1,
+                ),
+            ],
             || {
                 #[derive(BufferContents, Vertex)]
                 #[repr(C)]
@@ -82,7 +80,7 @@ impl Square {
             6,
         );
         Self {
-            drawable_entry,
+            drawable,
             data: data,
         }
     }

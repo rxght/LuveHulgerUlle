@@ -6,7 +6,7 @@ use vulkano::{
 
 use crate::graphics::{
     bindable::{self, UniformBuffer, UniformBufferBinding},
-    drawable::{DrawableEntry, GenericDrawable},
+    drawable::Drawable,
     shaders::{frag_color, vert_square},
     Graphics,
 };
@@ -16,7 +16,7 @@ use super::{NormalizedRectangle, UiElement, UiLayout};
 pub struct UiSquare {
     layout: UiLayout,
     descriptor: Cell<NormalizedRectangle>,
-    pub drawable_entry: DrawableEntry,
+    pub drawable: Arc<Drawable>,
     pub data: Arc<UniformBuffer<vert_square::LayoutData>>,
 }
 
@@ -35,22 +35,20 @@ impl UiSquare {
             ShaderStages::VERTEX,
         );
 
-        let drawable_entry = GenericDrawable::new(
+        let drawable = Drawable::new(
             gfx,
-            || {
-                vec![
-                    UniformBufferBinding::new(data.clone(), 0),
-                    UniformBufferBinding::new(
-                        UniformBuffer::new(
-                            gfx,
-                            0,
-                            frag_color::ColorData { color },
-                            ShaderStages::FRAGMENT,
-                        ),
-                        1,
+            vec![
+                UniformBufferBinding::new(data.clone(), 0),
+                UniformBufferBinding::new(
+                    UniformBuffer::new(
+                        gfx,
+                        0,
+                        frag_color::ColorData { color },
+                        ShaderStages::FRAGMENT,
                     ),
-                ]
-            },
+                    1,
+                ),
+            ],
             || {
                 #[derive(BufferContents, Vertex)]
                 #[repr(C)]
@@ -85,7 +83,7 @@ impl UiSquare {
         Arc::new(Self {
             layout,
             descriptor: Cell::new(descriptor),
-            drawable_entry,
+            drawable,
             data: data,
         })
     }
@@ -100,8 +98,8 @@ impl UiElement for UiSquare {
         });
         self.descriptor.set(descriptor);
     }
-    fn get_drawable_entry(&self) -> &DrawableEntry {
-        &self.drawable_entry
+    fn get_drawable(&self) -> Arc<Drawable> {
+        self.drawable.clone()
     }
     fn get_layout(&self) -> NormalizedRectangle {
         self.descriptor.get()

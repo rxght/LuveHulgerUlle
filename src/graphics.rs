@@ -5,11 +5,10 @@ pub mod pipeline;
 pub mod shaders;
 pub mod utils;
 
-use std::cell::UnsafeCell;
 use std::cmp::min;
 use std::collections::HashMap;
 use std::panic::Location;
-use std::sync::{Arc, OnceLock, Weak};
+use std::sync::{Arc, OnceLock, RwLock, Weak};
 use vulkano::command_buffer::allocator::StandardCommandBufferAlloc;
 use vulkano::command_buffer::{PrimaryAutoCommandBuffer, RenderPassBeginInfo};
 use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
@@ -17,7 +16,7 @@ use vulkano::format::{ClearValue, FormatFeatures};
 use vulkano::image::{AttachmentImage, ImageTiling};
 use vulkano::render_pass::SubpassDependency;
 
-use self::drawable::{Drawable, DrawableEntry, DrawableSharedPart, GenericDrawable};
+use self::drawable::{Drawable, DrawableSharedPart};
 use vulkano::sync::{AccessFlags, PipelineStages};
 use vulkano::{
     command_buffer::{
@@ -129,8 +128,8 @@ pub struct Graphics {
     //depth_buffer: Vec<Arc<ImageView<AttachmentImage>>>,
     framebuffers: Vec<Arc<Framebuffer>>,
 
-    shared_data_map: UnsafeCell<HashMap<Location<'static>, Weak<DrawableSharedPart>>>, // THIS SHOULD BE MOVED
-    registered_drawables: Vec<Weak<GenericDrawable>>, // THIS SHOULD BE MOVED
+    shared_data_map: RwLock<HashMap<Location<'static>, Weak<DrawableSharedPart>>>,
+    draw_queue: Vec<Arc<Drawable>>,
 
     utils: OnceLock<utils::Utils>,
 
@@ -203,8 +202,8 @@ impl Graphics {
             main_render_pass: main_render_pass,
             framebuffers: framebuffers,
 
-            shared_data_map: UnsafeCell::new(HashMap::new()),
-            registered_drawables: Vec::new(),
+            shared_data_map: RwLock::new(HashMap::new()),
+            draw_queue: Vec::new(),
 
             utils: OnceLock::new(),
 
@@ -228,8 +227,8 @@ impl Graphics {
     pub fn get_allocator(&self) -> &StandardMemoryAllocator {
         &self.allocator
     }
-    pub fn get_shared_data_map(&self) -> &HashMap<Location<'static>, Weak<DrawableSharedPart>> {
-        unsafe { &self.shared_data_map.get().as_ref().unwrap() }
+    pub fn get_shared_data(&self, id: &Location<'static>) -> Option<Arc<DrawableSharedPart>> {
+        self.shared_data_map.read().unwrap().get(id).and_then(Weak::upgrade)
     }
     pub fn get_swapchain_format(&self) -> Format {
         self.swapchain.image_format()
@@ -291,7 +290,7 @@ impl Graphics {
             .unwrap()
             .set_viewport(0, [viewport.clone()]);
 
-        for drawable in self.registered_drawables.iter().filter_map(|p| p.upgrade()) {
+        for drawable in self.draw_queue.iter() {
             for bindable in drawable.get_bindables() {
                 bindable.bind(&self, &mut builder, drawable.get_pipeline_layout());
             }
@@ -305,6 +304,8 @@ impl Graphics {
                 .draw_indexed(drawable.get_index_count(), 1, 0, 0, 0)
                 .unwrap();
         }
+
+        self.draw_queue.truncate(0);
 
         builder.end_render_pass().unwrap();
         self.main_command_buffer = Some(builder.build().unwrap());
@@ -355,25 +356,8 @@ impl Graphics {
         self.inflight_index = (self.inflight_index + 1) % IN_FLIGHT_COUNT as u32;
     }
 
-    pub fn register_drawable(&mut self, drawable_entry: &DrawableEntry) {
-        if drawable_entry.registered_uid.get().is_some() {
-            return;
-        }
-
-        drawable_entry
-            .registered_uid
-            .set(Some(self.registered_drawables.len() as u32));
-        self.registered_drawables.push(drawable_entry.get_weak());
-    }
-
-    pub fn unregister_drawable(&mut self, drawable_entry: &DrawableEntry) {
-        match drawable_entry.registered_uid.get() {
-            Some(idx) => match self.registered_drawables.get_mut(idx as usize) {
-                Some(weak) => *weak = Weak::new(),
-                None => _ = dbg!("[WARN] Tried to unregister an entry that was out of bounds."),
-            },
-            None => _ = dbg!("[WARN] Tried to unregister an entry that wasn't registered."),
-        }
+    pub fn queue_drawable(&mut self, drawable: Arc<Drawable>) {
+        self.draw_queue.push(drawable);
     }
 
     pub fn recreate_swapchain(&mut self) {
@@ -437,14 +421,7 @@ impl Graphics {
         shared_id: &Location<'static>,
         shared_part: Arc<DrawableSharedPart>,
     ) {
-        // illegal write to shared data map. Should be fine since shared_data_map is only ever referenced temporarily.
-        unsafe {
-            self.shared_data_map
-                .get()
-                .as_mut()
-                .unwrap()
-                .insert(*shared_id, Arc::downgrade(&shared_part));
-        }
+        self.shared_data_map.write().unwrap().insert(*shared_id, Arc::downgrade(&shared_part));
     }
 }
 

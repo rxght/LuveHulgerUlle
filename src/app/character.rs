@@ -176,4 +176,8 @@ impl CharacterController {
         self.tile_renderer
             .set_texture(self.textures[texture_idx].clone());
     }
+
+    pub fn draw(&self, gfx: &mut Graphics) {
+        self.tile_renderer.draw(gfx);
+    }
 }

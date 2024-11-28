@@ -7,7 +7,7 @@ use vulkano::{
 use crate::graphics::{
     bindable::{self, PushConstant, Texture},
     camera::Camera,
-    drawable::{DrawableEntry, GenericDrawable},
+    drawable::Drawable,
     shaders::{
         frag_texture_2DArray,
         vert_tile::{self, FrameData},
@@ -37,7 +37,13 @@ impl TileAnimation {
 }
 
 pub struct TileMap {
-    pub layers: Vec<DrawableEntry>,
+    pub layers: Vec<Arc<Drawable>>,
+}
+
+impl TileMap {
+    pub fn draw(&self, gfx: &mut Graphics) {
+        self.layers.iter().for_each(|drawable| gfx.queue_drawable(drawable.clone()));
+    }
 }
 
 pub struct TileMapLoader {
@@ -229,21 +235,19 @@ impl TileMapLoader {
         texture: Arc<Texture>,
         camera: &Camera,
         frame_data: Arc<PushConstant<FrameData>>,
-    ) -> Option<DrawableEntry> {
+    ) -> Option<Arc<Drawable>> {
         let index_count = indices.len() as u32;
         if index_count == 0 {
             return None;
         }
-        Some(GenericDrawable::new(
+        Some(Drawable::new(
             gfx,
-            || {
-                vec![
-                    bindable::TextureBinding::new(texture, 1),
-                    bindable::VertexBuffer::new(gfx, vertices),
-                    bindable::IndexBuffer::new(gfx, indices),
-                    frame_data,
-                ]
-            },
+            vec![
+                bindable::TextureBinding::new(texture, 1),
+                bindable::VertexBuffer::new(gfx, vertices),
+                bindable::IndexBuffer::new(gfx, indices),
+                frame_data,
+            ],
             || {
                 vec![
                     bindable::VertexShader::from_module(vert_tile::load(gfx.get_device()).unwrap()),

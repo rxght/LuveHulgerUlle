@@ -6,7 +6,7 @@ use vulkano::{
 
 use crate::graphics::{
     bindable::{self, Texture, TextureBinding, UniformBuffer, UniformBufferBinding},
-    drawable::{DrawableEntry, GenericDrawable},
+    drawable::Drawable,
     shaders::{frag_textured, vert_ui_textured},
     Graphics,
 };
@@ -16,7 +16,7 @@ use super::{NormalizedRectangle, Rectangle, UiElement, UiLayout};
 pub struct UiImage {
     layout: UiLayout,
     descriptor: Cell<NormalizedRectangle>,
-    pub drawable_entry: DrawableEntry,
+    pub drawable: Arc<Drawable>,
     pub layout_data: Arc<UniformBuffer<vert_ui_textured::LayoutData>>,
     pub texture_mapping_data: Arc<UniformBuffer<vert_ui_textured::TextureMappingData>>,
 }
@@ -61,15 +61,13 @@ impl UiImage {
             ShaderStages::VERTEX,
         );
 
-        let drawable_entry = GenericDrawable::new(
+        let drawable = Drawable::new(
             gfx,
-            || {
-                vec![
-                    UniformBufferBinding::new(layout_data.clone(), 0),
-                    UniformBufferBinding::new(texture_mapping_data.clone(), 2),
-                    TextureBinding::new(texture.clone(), 1),
-                ]
-            },
+            vec![
+                UniformBufferBinding::new(layout_data.clone(), 0),
+                UniformBufferBinding::new(texture_mapping_data.clone(), 2),
+                TextureBinding::new(texture.clone(), 1),
+            ],
             || {
                 #[derive(BufferContents, Vertex)]
                 #[repr(C)]
@@ -104,7 +102,7 @@ impl UiImage {
         Arc::new(Self {
             layout,
             descriptor: Cell::new(descriptor),
-            drawable_entry,
+            drawable,
             layout_data,
             texture_mapping_data,
         })
@@ -120,8 +118,8 @@ impl UiElement for UiImage {
         });
         self.descriptor.set(descriptor);
     }
-    fn get_drawable_entry(&self) -> &DrawableEntry {
-        &self.drawable_entry
+    fn get_drawable(&self) -> Arc<Drawable> {
+        self.drawable.clone()
     }
     fn get_layout(&self) -> NormalizedRectangle {
         self.descriptor.get()

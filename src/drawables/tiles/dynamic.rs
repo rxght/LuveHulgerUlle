@@ -7,7 +7,7 @@ use vulkano::{
 use crate::graphics::{
     bindable::{self, PushConstant, Texture, TextureBinding},
     camera::Camera,
-    drawable::{DrawableEntry, GenericDrawable},
+    drawable::Drawable,
     shaders::{frag_texture_2DArray, vert_tile2},
     Graphics,
 };
@@ -22,7 +22,7 @@ struct VertexT {
 pub struct DynamicTile {
     texture: Arc<TextureBinding>,
     object_data: Arc<bindable::PushConstant<vert_tile2::ObjectData>>,
-    pub drawable: DrawableEntry,
+    drawable: Arc<Drawable>,
 }
 
 impl DynamicTile {
@@ -45,9 +45,9 @@ impl DynamicTile {
 
         let texture_binding = bindable::TextureBinding::new(initial_texture, 1);
 
-        let entry = GenericDrawable::new(
+        let drawable = Drawable::new(
             gfx,
-            || vec![object_data.clone()],
+            vec![object_data.clone()],
             || {
                 let vertices = vec![
                     VertexT { pos: [0.0, 0.0] },
@@ -55,9 +55,8 @@ impl DynamicTile {
                     VertexT { pos: [0.0, 1.0] },
                     VertexT { pos: [1.0, 1.0] },
                 ];
-
+    
                 let indices = vec![0, 1, 2, 2, 1, 3];
-
                 vec![
                     bindable::VertexBuffer::new(gfx, vertices),
                     bindable::IndexBuffer::new(gfx, indices),
@@ -81,7 +80,7 @@ impl DynamicTile {
         Self {
             texture: texture_binding,
             object_data,
-            drawable: entry,
+            drawable,
         }
     }
 
@@ -109,5 +108,9 @@ impl DynamicTile {
 
     pub fn object_data(&self) -> &PushConstant<vert_tile2::ObjectData> {
         &self.object_data
+    }
+
+    pub fn draw(&self, gfx: &mut Graphics) {
+        gfx.queue_drawable(self.drawable.clone());
     }
 }

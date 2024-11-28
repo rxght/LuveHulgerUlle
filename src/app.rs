@@ -29,12 +29,7 @@ impl App {
         let camera = Camera::new(gfx, [0.0, 0.0], 1.0, 0.0);
 
         let mut loader = TileMapLoader::new();
-        let tile_map = loader.load(gfx, "assets\\tilemaps\\animated.tmx", &camera);
-
-        tile_map
-            .layers
-            .iter()
-            .for_each(|p| gfx.register_drawable(p));
+        let tile_map = loader.load(gfx, "assets\\tilemaps\\bigmap.tmx", &camera);
 
         let main_ui_scene = UiScene(vec![]);
 
@@ -44,10 +39,9 @@ impl App {
             width: 1200,
             height: 800,
         });
-        ui.set_scene(gfx, main_ui_scene.clone());
+        ui.set_scene(main_ui_scene.clone());
 
         let player = CharacterController::new(gfx, &camera);
-        gfx.register_drawable(&player.tile_renderer.drawable);
 
         Self {
             input,
@@ -65,11 +59,15 @@ impl App {
         gfx.recreate_swapchain();
     }
 
-    pub fn run(&mut self, _gfx: &Graphics, delta_time: Duration) {
+    pub fn run(&mut self, gfx: &mut Graphics, delta_time: Duration) {
+
         self.player.update(&self.input, delta_time);
         self.camera.position = *self.player.position();
         self.editor_camera_movement();
         self.tile_map_loader.update();
+
+        self.tile_map.draw(gfx);
+        self.player.draw(gfx);
     }
 
     fn editor_camera_movement(&mut self) {
