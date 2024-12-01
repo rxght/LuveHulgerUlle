@@ -1,4 +1,4 @@
-use std::{cell::Cell, sync::Arc};
+use std::{cell::{Cell, UnsafeCell}, sync::Arc};
 
 use vulkano::{
     buffer::BufferContents, pipeline::graphics::vertex_input::Vertex, shader::ShaderStages,
@@ -11,21 +11,19 @@ use crate::graphics::{
     Graphics,
 };
 
-use super::{NormalizedRectangle, Rectangle, UiElement, UiLayout};
+use super::{NormalizedRectangle, UiElement, UiLayout};
 
 pub struct UiImage {
-    layout: UiLayout,
+    layout: UnsafeCell<UiLayout>,
     descriptor: Cell<NormalizedRectangle>,
-    pub drawable: Arc<Drawable>,
-    pub layout_data: Arc<UniformBuffer<vert_ui_textured::LayoutData>>,
-    pub texture_mapping_data: Arc<UniformBuffer<vert_ui_textured::TextureMappingData>>,
+    drawable: Arc<Drawable>,
+    layout_data: Arc<UniformBuffer<vert_ui_textured::LayoutData>>,
 }
 
 impl UiImage {
     pub fn new(
         gfx: &mut Graphics,
         texture: Arc<Texture>,
-        texture_mapping: Rectangle,
         layout: UiLayout,
     ) -> Arc<Self> {
         let window_size: [u32; 2] = gfx.get_window().inner_size().into();
@@ -41,31 +39,10 @@ impl UiImage {
             ShaderStages::VERTEX,
         );
 
-        let texture_size = texture.dimensions().width_height();
-        let uv_offset = [
-            texture_mapping.x_position as f32 / texture_size[0] as f32,
-            texture_mapping.y_position as f32 / texture_size[1] as f32,
-        ];
-        let uv_scaling = [
-            texture_mapping.width as f32 / texture_size[0] as f32,
-            texture_mapping.height as f32 / texture_size[1] as f32,
-        ];
-
-        let texture_mapping_data = UniformBuffer::new(
-            gfx,
-            0,
-            vert_ui_textured::TextureMappingData {
-                uv_offset,
-                uv_scaling,
-            },
-            ShaderStages::VERTEX,
-        );
-
         let drawable = Drawable::new(
             gfx,
             vec![
                 UniformBufferBinding::new(layout_data.clone(), 0),
-                UniformBufferBinding::new(texture_mapping_data.clone(), 2),
                 TextureBinding::new(texture.clone(), 1),
             ],
             || {
@@ -100,18 +77,25 @@ impl UiImage {
         );
 
         Arc::new(Self {
-            layout,
+            layout: UnsafeCell::new(layout),
             descriptor: Cell::new(descriptor),
             drawable,
             layout_data,
-            texture_mapping_data,
         })
+    }
+    
+    pub fn layout(&self) -> &UiLayout {
+        unsafe { &*self.layout.get() }
+    }
+
+    pub fn layout_mut(&self) -> &mut UiLayout {
+        unsafe { &mut *self.layout.get() }
     }
 }
 
 impl UiElement for UiImage {
     fn handle_resize(&self, new_size: [u32; 2]) {
-        let descriptor = self.layout.normalize(new_size);
+        let descriptor = self.layout().normalize(new_size);
         self.layout_data.access_data(|data| {
             data.position = [descriptor.x_position, descriptor.y_position];
             data.dimensions = [descriptor.width, descriptor.height];

@@ -36,7 +36,7 @@ pub struct CharacterController {
 
 impl CharacterController {
     pub fn new(gfx: &Graphics, camera: &Camera) -> Self {
-        let folder = Path::new("assets\\textures\\characters\\test_character\\");
+        let folder = Path::new("assets/textures/characters/test_character/");
         let dimensions = [32, 48];
 
         let textures = vec![

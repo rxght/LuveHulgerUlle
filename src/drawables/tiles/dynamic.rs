@@ -55,7 +55,7 @@ impl DynamicTile {
                     VertexT { pos: [0.0, 1.0] },
                     VertexT { pos: [1.0, 1.0] },
                 ];
-    
+
                 let indices = vec![0, 1, 2, 2, 1, 3];
                 vec![
                     bindable::VertexBuffer::new(gfx, vertices),

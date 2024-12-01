@@ -9,13 +9,8 @@ layout( set = 0, binding = 0 ) uniform LayoutData {
     vec2 dimensions;
 };
 
-layout( set = 2, binding = 0) uniform TextureMappingData {
-    vec2 uv_offset;
-    vec2 uv_scaling;
-};
-
 void main()
 {
     gl_Position = vec4(position + pos * dimensions, 0.0, 1.0);
-    out_uv = uv_offset + uv_scaling * pos;
+    out_uv = pos;
 }

@@ -228,7 +228,11 @@ impl Graphics {
         &self.allocator
     }
     pub fn get_shared_data(&self, id: &Location<'static>) -> Option<Arc<DrawableSharedPart>> {
-        self.shared_data_map.read().unwrap().get(id).and_then(Weak::upgrade)
+        self.shared_data_map
+            .read()
+            .unwrap()
+            .get(id)
+            .and_then(Weak::upgrade)
     }
     pub fn get_swapchain_format(&self) -> Format {
         self.swapchain.image_format()
@@ -421,7 +425,10 @@ impl Graphics {
         shared_id: &Location<'static>,
         shared_part: Arc<DrawableSharedPart>,
     ) {
-        self.shared_data_map.write().unwrap().insert(*shared_id, Arc::downgrade(&shared_part));
+        self.shared_data_map
+            .write()
+            .unwrap()
+            .insert(*shared_id, Arc::downgrade(&shared_part));
     }
 }
 

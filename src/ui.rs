@@ -1,4 +1,4 @@
-use std::{cell::UnsafeCell, sync::Arc};
+use std::{cell::UnsafeCell, ops::Add, sync::Arc};
 
 use winit::event::{DeviceEvent, ElementState, Event};
 
@@ -123,6 +123,7 @@ pub struct Rectangle {
     pub height: u32,
 }
 
+#[derive(Clone, Copy)]
 pub enum UiUnit {
     Percentage(f32),
     Pixels(f32),
@@ -135,6 +136,24 @@ impl UiUnit {
             UiUnit::Percentage(p) => p / 50.0,
             UiUnit::Pixels(px) => (2.0 * px) / px_max,
             UiUnit::Combined(p, px) => p / 50.0 + (2.0 * px) / px_max,
+        }
+    }
+}
+
+impl Add<Self> for UiUnit {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        let (p, px) = match self {
+            UiUnit::Percentage(p) => (p, 0.0),
+            UiUnit::Pixels(px) => (0.0, px),
+            UiUnit::Combined(p, px) => (p, px),
+        };
+
+        match rhs {
+            UiUnit::Percentage(p2) => UiUnit::Combined(p + p2, px),
+            UiUnit::Pixels(px2) => UiUnit::Combined(p, px + px2),
+            UiUnit::Combined(p2, px2) => UiUnit::Combined(p + p2, px + px2),
         }
     }
 }

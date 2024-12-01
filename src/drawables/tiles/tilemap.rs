@@ -42,7 +42,9 @@ pub struct TileMap {
 
 impl TileMap {
     pub fn draw(&self, gfx: &mut Graphics) {
-        self.layers.iter().for_each(|drawable| gfx.queue_drawable(drawable.clone()));
+        self.layers
+            .iter()
+            .for_each(|drawable| gfx.queue_drawable(drawable.clone()));
     }
 }
 
@@ -97,7 +99,6 @@ impl TileMapLoader {
         let mut final_layers = Vec::new();
 
         for layer in map.layers() {
-
             let mut groups: HashMap<&str, TileGroup> = HashMap::new();
 
             let layer = match layer.as_tile_layer() {
@@ -122,7 +123,9 @@ impl TileMapLoader {
 
                     let group = groups.entry(texture_path).or_default();
 
-                    if let Some(animation) = tile.get_tile().as_ref().and_then(|p| p.animation.as_ref()) {
+                    if let Some(animation) =
+                        tile.get_tile().as_ref().and_then(|p| p.animation.as_ref())
+                    {
                         let tile_id = tile.id();
                         if !group.animations.contains_key(&tile_id) {
                             group.animations.insert(
@@ -143,45 +146,59 @@ impl TileMapLoader {
 
             for (texture_path, group) in groups.into_iter() {
                 let texture = Texture::new_array(gfx, texture_path, [16, 16]);
-    
+
                 let mut animated_groups: HashMap<&AnimationDesc, Vec<[u32; 3]>> = HashMap::new();
-    
+
                 let mut vertices = Vec::new();
                 let mut indices = Vec::new();
-    
+
                 for tile in group.tiles {
-    
                     let tile_id = tile[2];
-    
+
                     match group.animations.get(&tile_id) {
                         Some(animation) => animated_groups.entry(animation).or_default().push(tile),
-                        None => Self::add_tile_to_mesh(&mut vertices, &mut indices, tile, tile_scale),
+                        None => {
+                            Self::add_tile_to_mesh(&mut vertices, &mut indices, tile, tile_scale)
+                        }
                     }
                 }
-    
-                if let Some(entry) = Self::create_drawable(gfx, vertices, indices, texture.clone(), camera, self.no_frame_offset_buffer.clone()) {
+
+                if let Some(entry) = Self::create_drawable(
+                    gfx,
+                    vertices,
+                    indices,
+                    texture.clone(),
+                    camera,
+                    self.no_frame_offset_buffer.clone(),
+                ) {
                     final_layers.push(entry);
                 }
-    
+
                 for (animation, tiles) in animated_groups {
-    
                     let mut vertices = Vec::new();
                     let mut indices = Vec::new();
-    
+
                     for tile in tiles {
                         Self::add_tile_to_mesh(&mut vertices, &mut indices, tile, tile_scale);
                     }
-    
+
                     let animation_state = match self.animations.get(animation) {
                         Some(anim) => anim.clone(),
                         None => {
                             let tile_anim = Arc::new(TileAnimation::new());
                             self.animations.insert(animation.clone(), tile_anim.clone());
                             tile_anim
-                        },
+                        }
                     };
-    
-                    if let Some(entry) = Self::create_drawable(gfx, vertices, indices, texture.clone(), camera, animation_state.buffer.clone()) {
+
+                    if let Some(entry) = Self::create_drawable(
+                        gfx,
+                        vertices,
+                        indices,
+                        texture.clone(),
+                        camera,
+                        animation_state.buffer.clone(),
+                    ) {
                         final_layers.push(entry);
                     }
                 }
@@ -193,8 +210,12 @@ impl TileMapLoader {
         })
     }
 
-    fn add_tile_to_mesh(vertices: &mut Vec<VertexT>, indices: &mut Vec<u32>, tile_info: [u32; 3], tile_scale: f32) {
-
+    fn add_tile_to_mesh(
+        vertices: &mut Vec<VertexT>,
+        indices: &mut Vec<u32>,
+        tile_info: [u32; 3],
+        tile_scale: f32,
+    ) {
         let x = tile_info[0];
         let y = tile_info[1];
         let uv_layer = tile_info[2] as f32;
@@ -224,7 +245,7 @@ impl TileMapLoader {
                 uv: [1.0, 1.0, uv_layer],
             },
         ]);
-        
+
         indices.extend([0, 1, 2, 2, 1, 3].into_iter().map(|p| first_vertex_idx + p));
     }
 
@@ -269,13 +290,15 @@ impl TileMapLoader {
         for (offsets, state) in self.animations.iter() {
             let (_, frame_duration) = offsets.frames[state.current_frame.get()];
             if state.last_frame_time.get().elapsed().as_millis() as u32 > frame_duration {
-                state.current_frame.set((state.current_frame.get() + 1) % offsets.frames.len());
+                state
+                    .current_frame
+                    .set((state.current_frame.get() + 1) % offsets.frames.len());
                 state.last_frame_time.set(std::time::Instant::now());
                 let (layer_offset, _) = offsets.frames[state.current_frame.get()];
                 state
                     .buffer
                     .access_data(|data| data.layer_offset = layer_offset as f32);
             }
-        };
+        }
     }
 }
