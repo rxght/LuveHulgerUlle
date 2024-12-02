@@ -14,8 +14,8 @@ pub struct MatrixUbo {
 }
 
 pub struct Utils {
-    pub perspective_projection: Arc<UniformBuffer<MatrixUbo>>,
-    pub cartesian_to_normalized: Arc<UniformBuffer<MatrixUbo>>,
+    perspective_projection: Arc<UniformBuffer<MatrixUbo>>,
+    cartesian_to_normalized: Arc<UniformBuffer<MatrixUbo>>,
 }
 
 impl Utils {
@@ -112,5 +112,13 @@ impl Utils {
             )
             .into()
         });
+    }
+
+    pub fn perspective_projection(&self) -> Arc<UniformBuffer<MatrixUbo>> {
+        self.perspective_projection.clone()
+    }
+
+    pub fn cartesian_to_normalized(&self) -> Arc<UniformBuffer<MatrixUbo>> {
+        self.cartesian_to_normalized.clone()
     }
 }

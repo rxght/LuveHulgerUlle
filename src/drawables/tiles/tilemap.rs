@@ -276,7 +276,7 @@ impl TileMapLoader {
                         frag_texture_2DArray::load(gfx.get_device()).unwrap(),
                     ),
                     bindable::UniformBufferBinding::new(
-                        gfx.get_utils().cartesian_to_normalized.clone(),
+                        gfx.utils().cartesian_to_normalized().clone(),
                         0,
                     ),
                     bindable::UniformBufferBinding::new(camera.uniform_buffer(), 2),

@@ -55,6 +55,7 @@ impl Keyboard {
 
                             match previous_state {
                                 None | Some(ButtonState::Released) => {
+                                    #[cfg(debug_assertions)]
                                     println!("[KEYBOARD] {} pressed", input.scancode);
                                     if let Ok(mut guard) = self.key_map.write() {
                                         guard.insert(

@@ -3,18 +3,23 @@ pub mod camera;
 pub mod drawable;
 pub mod pipeline;
 pub mod shaders;
+pub mod ui;
 pub mod utils;
 
 use std::cmp::min;
 use std::collections::HashMap;
 use std::panic::Location;
 use std::sync::{Arc, OnceLock, RwLock, Weak};
+use ui::UiRenderer;
 use vulkano::command_buffer::allocator::StandardCommandBufferAlloc;
 use vulkano::command_buffer::{PrimaryAutoCommandBuffer, RenderPassBeginInfo};
 use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
 use vulkano::format::{ClearValue, FormatFeatures};
 use vulkano::image::{AttachmentImage, ImageTiling};
 use vulkano::render_pass::SubpassDependency;
+use winit::event::Event;
+
+use crate::input::Input;
 
 use self::drawable::{Drawable, DrawableSharedPart};
 use vulkano::sync::{AccessFlags, PipelineStages};
@@ -132,6 +137,7 @@ pub struct Graphics {
     draw_queue: Vec<Arc<Drawable>>,
 
     utils: OnceLock<utils::Utils>,
+    ui_renderer: UiRenderer,
 
     main_command_buffer: Option<PrimaryAutoCommandBuffer<StandardCommandBufferAlloc>>,
     futures: Vec<Option<Box<dyn GpuFuture>>>,
@@ -206,6 +212,7 @@ impl Graphics {
             draw_queue: Vec::new(),
 
             utils: OnceLock::new(),
+            ui_renderer: UiRenderer::new(),
 
             main_command_buffer: None,
             futures: futures,
@@ -254,9 +261,6 @@ impl Graphics {
     }
     pub fn get_in_flight_index(&self) -> usize {
         self.inflight_index as usize
-    }
-    pub fn get_utils(&self) -> &utils::Utils {
-        self.utils.get().unwrap()
     }
 
     pub fn recreate_command_buffer(&mut self) {
@@ -315,7 +319,28 @@ impl Graphics {
         self.main_command_buffer = Some(builder.build().unwrap());
     }
 
+    pub fn is_drawable(&mut self) -> bool {
+        let window_size = self.window.inner_size();
+
+        let is_minimized = self.window.is_minimized().unwrap_or(false);
+        let is_visible = self.window.is_visible().unwrap_or(true);
+
+        if is_minimized || !is_visible || window_size.width == 0 || window_size.height == 0 {
+            return false;
+        }
+        return true;
+    }
+
+    pub fn clear_last_frame(&mut self) {
+        self.ui_renderer.clear_last_frame();
+    }
+
     pub fn draw_frame(&mut self) {
+
+        // add ui_elements to the draw queue
+        let ui_elements = self.ui_renderer.elements();
+        self.draw_queue.extend(ui_elements.iter().map(|elem| elem.get_drawable()));
+
         if let Some(last_frame_future) = self.futures[self.inflight_index as usize].take() {
             match last_frame_future.then_signal_fence_and_flush() {
                 Ok(mut future) => {
@@ -364,6 +389,10 @@ impl Graphics {
         self.draw_queue.push(drawable);
     }
 
+    pub fn handle_resize(&mut self) {
+        self.recreate_swapchain();
+    }
+
     pub fn recreate_swapchain(&mut self) {
         for future in &mut self.futures {
             if let Some(future) = future.take() {
@@ -404,7 +433,10 @@ impl Graphics {
             ..self.swapchain.create_info()
         };
 
-        let (swapchain, swapchain_images) = self.swapchain.recreate(create_info).unwrap();
+        let (swapchain, swapchain_images) = match self.swapchain.recreate(create_info).ok() {
+            Some(v) => v,
+            None => return,
+        };
 
         let image_views = create_image_views(&swapchain_images, swapchain.clone());
 
@@ -429,6 +461,19 @@ impl Graphics {
             .write()
             .unwrap()
             .insert(*shared_id, Arc::downgrade(&shared_part));
+    }
+
+    pub fn utils(&self) -> &utils::Utils {
+        self.utils.get().unwrap()
+    }
+
+    pub fn ui_renderer_mut(&mut self) -> &mut UiRenderer {
+        &mut self.ui_renderer
+    }
+
+    pub fn handle_event(&mut self, input_state: &Input, event: &Event<'_, ()>) -> bool {
+        self.ui_renderer
+            .handle_event(event, input_state, self.window.inner_size().into())
     }
 }
 

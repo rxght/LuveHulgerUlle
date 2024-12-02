@@ -74,7 +74,7 @@ impl Square {
                     bindable::FragmentShader::from_module(
                         frag_color::load(gfx.get_device()).unwrap(),
                     ),
-                    UniformBufferBinding::new(gfx.get_utils().cartesian_to_normalized.clone(), 0),
+                    UniformBufferBinding::new(gfx.utils().cartesian_to_normalized().clone(), 0),
                 ]
             },
             6,

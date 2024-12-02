@@ -61,10 +61,11 @@ impl Mouse {
                 if let DeviceEvent::Button { button, state } = event {
                     let previous_state = button_map.get(button).cloned();
 
-                    //match *state {
-                    //    ElementState::Pressed => println!("Button: {button}, Pressed"),
-                    //    ElementState::Released => println!("Button: {button}, Released"),
-                    //};
+                    #[cfg(debug_assertions)]
+                    match *state {
+                        ElementState::Pressed => println!("[MOUSE] {button} pressed"),
+                        ElementState::Released => println!("[MOUSE] {button} released"),
+                    };
 
                     match previous_state {
                         Some(ButtonState::Pressed(_)) | Some(ButtonState::Held(_)) => {

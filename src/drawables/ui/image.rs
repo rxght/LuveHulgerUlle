@@ -1,4 +1,7 @@
-use std::{cell::{Cell, UnsafeCell}, sync::Arc};
+use std::{
+    cell::{Cell, UnsafeCell},
+    sync::Arc,
+};
 
 use vulkano::{
     buffer::BufferContents, pipeline::graphics::vertex_input::Vertex, shader::ShaderStages,
@@ -8,32 +11,27 @@ use crate::graphics::{
     bindable::{self, Texture, TextureBinding, UniformBuffer, UniformBufferBinding},
     drawable::Drawable,
     shaders::{frag_textured, vert_ui_textured},
+    ui::{Rectangle, UiElement, UiLayout},
     Graphics,
 };
 
-use super::{NormalizedRectangle, UiElement, UiLayout};
-
 pub struct UiImage {
     layout: UnsafeCell<UiLayout>,
-    descriptor: Cell<NormalizedRectangle>,
+    descriptor: Cell<Rectangle<f32>>,
     drawable: Arc<Drawable>,
     layout_data: Arc<UniformBuffer<vert_ui_textured::LayoutData>>,
 }
 
 impl UiImage {
-    pub fn new(
-        gfx: &mut Graphics,
-        texture: Arc<Texture>,
-        layout: UiLayout,
-    ) -> Arc<Self> {
+    pub fn new(gfx: &mut Graphics, texture: Arc<Texture>, layout: UiLayout) -> Arc<Self> {
         let window_size: [u32; 2] = gfx.get_window().inner_size().into();
-        let descriptor = layout.normalize(window_size);
+        let descriptor = layout.to_normalized(window_size);
 
         let layout_data = UniformBuffer::new(
             gfx,
             0,
             vert_ui_textured::LayoutData {
-                position: [descriptor.x_position, descriptor.y_position],
+                position: [descriptor.x, descriptor.y],
                 dimensions: [descriptor.width, descriptor.height],
             },
             ShaderStages::VERTEX,
@@ -83,7 +81,7 @@ impl UiImage {
             layout_data,
         })
     }
-    
+
     pub fn layout(&self) -> &UiLayout {
         unsafe { &*self.layout.get() }
     }
@@ -95,9 +93,9 @@ impl UiImage {
 
 impl UiElement for UiImage {
     fn handle_resize(&self, new_size: [u32; 2]) {
-        let descriptor = self.layout().normalize(new_size);
+        let descriptor = self.layout().to_normalized(new_size);
         self.layout_data.access_data(|data| {
-            data.position = [descriptor.x_position, descriptor.y_position];
+            data.position = [descriptor.x, descriptor.y];
             data.dimensions = [descriptor.width, descriptor.height];
         });
         self.descriptor.set(descriptor);
@@ -105,7 +103,7 @@ impl UiElement for UiImage {
     fn get_drawable(&self) -> Arc<Drawable> {
         self.drawable.clone()
     }
-    fn get_layout(&self) -> NormalizedRectangle {
+    fn get_layout(&self) -> Rectangle<f32> {
         self.descriptor.get()
     }
 }

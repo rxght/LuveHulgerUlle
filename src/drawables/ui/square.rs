@@ -8,28 +8,27 @@ use crate::graphics::{
     bindable::{self, UniformBuffer, UniformBufferBinding},
     drawable::Drawable,
     shaders::{frag_color, vert_square},
+    ui::{Rectangle, UiElement, UiLayout},
     Graphics,
 };
 
-use super::{NormalizedRectangle, UiElement, UiLayout};
-
 pub struct UiSquare {
     layout: UiLayout,
-    descriptor: Cell<NormalizedRectangle>,
-    pub drawable: Arc<Drawable>,
-    pub data: Arc<UniformBuffer<vert_square::LayoutData>>,
+    drawable: Arc<Drawable>,
+    descriptor: Cell<Rectangle<f32>>,
+    layout_data: Arc<UniformBuffer<vert_square::LayoutData>>,
 }
 
 impl UiSquare {
     pub fn new(gfx: &mut Graphics, color: [f32; 4], layout: UiLayout) -> Arc<Self> {
         let window_size: [u32; 2] = gfx.get_window().inner_size().into();
-        let descriptor = layout.normalize(window_size);
+        let descriptor = layout.to_normalized(window_size);
 
-        let data = UniformBuffer::new(
+        let layout_data = UniformBuffer::new(
             gfx,
             0,
             vert_square::LayoutData {
-                position: [descriptor.x_position, descriptor.y_position],
+                position: [descriptor.x, descriptor.y],
                 dimensions: [descriptor.width, descriptor.height],
             },
             ShaderStages::VERTEX,
@@ -38,7 +37,7 @@ impl UiSquare {
         let drawable = Drawable::new(
             gfx,
             vec![
-                UniformBufferBinding::new(data.clone(), 0),
+                UniformBufferBinding::new(layout_data.clone(), 0),
                 UniformBufferBinding::new(
                     UniformBuffer::new(
                         gfx,
@@ -82,18 +81,18 @@ impl UiSquare {
 
         Arc::new(Self {
             layout,
-            descriptor: Cell::new(descriptor),
             drawable,
-            data: data,
+            descriptor: Cell::new(descriptor),
+            layout_data,
         })
     }
 }
 
 impl UiElement for UiSquare {
     fn handle_resize(&self, new_size: [u32; 2]) {
-        let descriptor = self.layout.normalize(new_size);
-        self.data.access_data(|data| {
-            data.position = [descriptor.x_position, descriptor.y_position];
+        let descriptor = self.layout.to_normalized(new_size);
+        self.layout_data.access_data(|data| {
+            data.position = [descriptor.x, descriptor.y];
             data.dimensions = [descriptor.width, descriptor.height];
         });
         self.descriptor.set(descriptor);
@@ -101,7 +100,7 @@ impl UiElement for UiSquare {
     fn get_drawable(&self) -> Arc<Drawable> {
         self.drawable.clone()
     }
-    fn get_layout(&self) -> NormalizedRectangle {
+    fn get_layout(&self) -> Rectangle<f32> {
         self.descriptor.get()
     }
 }
