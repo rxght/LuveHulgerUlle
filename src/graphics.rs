@@ -5,6 +5,7 @@ pub mod pipeline;
 pub mod shaders;
 pub mod utils;
 
+use egui_winit_vulkano::{Gui, GuiConfig};
 use smallvec::smallvec;
 use std::array;
 use std::cmp::min;
@@ -13,7 +14,7 @@ use std::panic::Location;
 use std::sync::{Arc, OnceLock, RwLock, Weak};
 use vulkano::command_buffer::{
     PrimaryAutoCommandBuffer, PrimaryCommandBufferAbstract, RenderPassBeginInfo, SubpassBeginInfo,
-    SubpassEndInfo,
+    SubpassContents, SubpassEndInfo,
 };
 use vulkano::descriptor_set::allocator::{
     StandardDescriptorSetAllocator, StandardDescriptorSetAllocatorCreateInfo,
@@ -24,13 +25,12 @@ use vulkano::image::view::ImageViewType;
 use vulkano::image::{Image, ImageCreateInfo, ImageTiling, ImageType};
 use vulkano::instance::InstanceCreateFlags;
 use vulkano::memory::allocator::AllocationCreateInfo;
-use vulkano::render_pass::{AttachmentLoadOp, AttachmentStoreOp, SubpassDependency};
+use vulkano::render_pass::Subpass;
 use vulkano::swapchain::SurfaceInfo;
 use vulkano::sync::future::FenceSignalFuture;
 use vulkano::{Validated, VulkanError};
 
 use self::drawable::{Drawable, DrawableSharedPart};
-use vulkano::sync::{AccessFlags, PipelineStages};
 use vulkano::{
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
@@ -42,15 +42,12 @@ use vulkano::{
     format::Format,
     image::{
         view::{ImageView, ImageViewCreateInfo},
-        ImageAspects, ImageLayout, ImageSubresourceRange, ImageUsage, SampleCount,
+        ImageAspects, ImageSubresourceRange, ImageUsage, SampleCount,
     },
     instance::{debug::ValidationFeatureEnable, Instance, InstanceCreateInfo, InstanceExtensions},
     memory::allocator::StandardMemoryAllocator,
     pipeline::graphics::viewport::Viewport,
-    render_pass::{
-        AttachmentDescription, AttachmentReference, Framebuffer, FramebufferCreateInfo, RenderPass,
-        RenderPassCreateInfo, SubpassDescription,
-    },
+    render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass},
     swapchain::{
         acquire_next_image, ColorSpace, CompositeAlpha, Surface, Swapchain, SwapchainCreateInfo,
         SwapchainPresentInfo,
@@ -114,12 +111,8 @@ impl QueueIndices {
 }
 
 pub struct Graphics {
-    //library: Arc<VulkanLibrary>,
-    //instance: Arc<Instance>,
-    //debug_messenger: Option<DebugUtilsMessenger>,
     surface: Arc<Surface>,
     window: Arc<Window>,
-    //physical_device: Arc<PhysicalDevice>,
     device: Arc<Device>,
     queues: Queues,
 
@@ -128,15 +121,14 @@ pub struct Graphics {
     descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
 
     swapchain: Arc<Swapchain>,
-    //swapchain_images: Vec<Arc<SwapchainImage>>,
     main_render_pass: Arc<RenderPass>,
-    //depth_buffer: Vec<Arc<ImageView<AttachmentImage>>>,
     framebuffers: Vec<Arc<Framebuffer>>,
 
     shared_data_map: RwLock<HashMap<Location<'static>, Weak<DrawableSharedPart>>>,
     draw_queue: Vec<Arc<Drawable>>,
 
     utils: OnceLock<utils::Utils>,
+    gui_system: Gui,
 
     main_command_buffer: Option<Arc<PrimaryAutoCommandBuffer<Arc<StandardCommandBufferAllocator>>>>,
     futures: [FenceSignalFuture<Box<dyn GpuFuture>>; IN_FLIGHT_COUNT],
@@ -203,13 +195,19 @@ impl Graphics {
             future.boxed().then_signal_fence_and_flush().unwrap()
         });
 
+        let gui_system = Gui::new_with_subpass(
+            event_loop,
+            surface.clone(),
+            queues.graphics_queue.clone().unwrap(),
+            Subpass::from(main_render_pass.clone(), 1).unwrap(),
+            swapchain.image_format(),
+            GuiConfig::default(),
+        );
+
         #[allow(unused_mut)]
         let mut gfx = Graphics {
-            //library,
-            //instance,
             surface,
             window,
-            //physical_device,
             device,
             queues,
 
@@ -218,7 +216,6 @@ impl Graphics {
             descriptor_set_allocator,
 
             swapchain,
-            //swapchain_images,
             main_render_pass,
             framebuffers,
 
@@ -226,6 +223,7 @@ impl Graphics {
             draw_queue: Vec::new(),
 
             utils: OnceLock::new(),
+            gui_system,
 
             main_command_buffer: None,
             futures,
@@ -306,7 +304,10 @@ impl Graphics {
                         self.framebuffers[self.framebuffer_index as usize].clone(),
                     )
                 },
-                SubpassBeginInfo::default(),
+                SubpassBeginInfo {
+                    contents: SubpassContents::Inline,
+                    ..Default::default()
+                },
             )
             .unwrap()
             .set_viewport(0, smallvec![viewport.clone()])
@@ -330,6 +331,23 @@ impl Graphics {
         }
 
         self.draw_queue.truncate(0);
+
+        // move on to gui subpass
+        builder
+            .next_subpass(
+                SubpassEndInfo::default(),
+                SubpassBeginInfo {
+                    contents: SubpassContents::SecondaryCommandBuffers,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+
+        //render gui
+        let cb = self
+            .gui_system
+            .draw_on_subpass_image(self.swapchain.image_extent());
+        builder.execute_commands(cb).unwrap();
 
         builder.end_render_pass(SubpassEndInfo::default()).unwrap();
         self.main_command_buffer = Some(builder.build().unwrap());
@@ -464,6 +482,14 @@ impl Graphics {
 
     pub fn utils(&self) -> &utils::Utils {
         self.utils.get().unwrap()
+    }
+
+    pub fn get_surface(&self) -> Arc<Surface> {
+        self.surface.clone()
+    }
+
+    pub fn gui(&mut self) -> &mut Gui {
+        &mut self.gui_system
     }
 }
 
@@ -631,7 +657,7 @@ fn create_swapchain(
     let surface_format = formats
         .iter()
         .find(|(format, color_space)| {
-            *format == Format::B8G8R8A8_SRGB && *color_space == ColorSpace::SrgbNonLinear
+            *format == Format::R8G8B8A8_UNORM && *color_space == ColorSpace::SrgbNonLinear
         })
         .unwrap_or(formats.first().unwrap());
 
@@ -656,7 +682,11 @@ fn create_swapchain(
     };
 
     // if vsync is enabled then PresentMode::Immediate should be filtered out here
-    let present_mode = present_modes.min_by_key(|p| *p as i32).unwrap();
+    let present_mode: vulkano::swapchain::PresentMode = present_modes
+        .min_by_key(|p| (*p as u32).wrapping_sub(1))
+        .unwrap();
+
+    println!("Using present mode: {present_mode:?}");
 
     let indices = find_queue_indices(device.physical_device().clone(), surface.clone());
     let image_sharing = if indices.graphics_queue == indices.present_queue {
@@ -726,65 +756,28 @@ fn create_main_render_pass(
     swapchain_format: Format,
     depth_format: Format,
 ) -> Arc<RenderPass> {
-    let attachments = vec![
-        AttachmentDescription {
-            format: swapchain_format,
-            samples: SampleCount::Sample1,
-            load_op: AttachmentLoadOp::Clear,
-            store_op: AttachmentStoreOp::Store,
-            initial_layout: ImageLayout::Undefined,
-            final_layout: ImageLayout::PresentSrc,
-            ..Default::default()
+    vulkano::ordered_passes_renderpass!(
+        device,
+        attachments: {
+            color: {
+                format: swapchain_format,
+                samples: SampleCount::Sample1,
+                load_op: Clear,
+                store_op: Store,
+            },
+            depth: {
+                format: depth_format,
+                samples: SampleCount::Sample1,
+                load_op: Clear,
+                store_op: Store,
+            }
         },
-        AttachmentDescription {
-            format: depth_format,
-            samples: SampleCount::Sample1,
-            load_op: AttachmentLoadOp::Clear,
-            store_op: AttachmentStoreOp::Store,
-            initial_layout: ImageLayout::Undefined,
-            final_layout: ImageLayout::DepthStencilAttachmentOptimal,
-            ..AttachmentDescription::default()
-        },
-    ];
-
-    let color_attachment_refs = vec![Some(AttachmentReference {
-        attachment: 0,
-        layout: ImageLayout::ColorAttachmentOptimal,
-        ..Default::default()
-    })];
-
-    let depth_attachment_ref = AttachmentReference {
-        attachment: 1,
-        layout: ImageLayout::DepthStencilAttachmentOptimal,
-        //aspects: ImageAspects::DEPTH,
-        ..Default::default()
-    };
-
-    let mut subpasses = Vec::new();
-    subpasses.push(SubpassDescription {
-        color_attachments: color_attachment_refs,
-        depth_stencil_attachment: Some(depth_attachment_ref),
-        ..Default::default()
-    });
-
-    let create_info = RenderPassCreateInfo {
-        attachments: attachments,
-        subpasses: subpasses,
-        dependencies: vec![SubpassDependency {
-            src_subpass: None,
-            dst_subpass: Some(0),
-            src_stages: PipelineStages::COLOR_ATTACHMENT_OUTPUT
-                | PipelineStages::EARLY_FRAGMENT_TESTS,
-            dst_stages: PipelineStages::COLOR_ATTACHMENT_OUTPUT
-                | PipelineStages::EARLY_FRAGMENT_TESTS,
-            src_access: AccessFlags::empty(),
-            dst_access: AccessFlags::COLOR_ATTACHMENT_WRITE
-                | AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
-            ..Default::default()
-        }],
-        ..Default::default()
-    };
-    RenderPass::new(device.clone(), create_info).expect("Failed to create render pass!")
+        passes: [
+            { color: [color], depth_stencil: {depth}, input: [] },
+            { color: [color], depth_stencil: {}, input: [] } // gui render pass
+        ]
+    )
+    .unwrap()
 }
 
 fn create_framebuffers(

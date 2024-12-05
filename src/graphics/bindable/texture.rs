@@ -18,7 +18,6 @@ use vulkano::{
         },
         PersistentDescriptorSet, WriteDescriptorSet,
     },
-    format::Format,
     image::{
         sampler::{Filter, Sampler, SamplerCreateInfo},
         view::{ImageView, ImageViewCreateInfo, ImageViewType},
@@ -47,6 +46,10 @@ struct LayoutCreateArgs {
 }
 
 impl Texture {
+    pub fn extent_2d(&self) -> [u32; 2] {
+        self.extent()[0..2].try_into().unwrap()
+    }
+
     pub fn extent(&self) -> [u32; 3] {
         self.image_view.image().extent()
     }
@@ -72,7 +75,6 @@ impl Texture {
             },
             image_extent,
             None,
-            Format::R8G8B8A8_SRGB,
             LayoutCreateArgs {
                 shader_strages: ShaderStages::FRAGMENT,
                 min_filter: filter,
@@ -134,7 +136,6 @@ impl Texture {
             bytes_closure,
             extent,
             Some(array_layers),
-            Format::R8G8B8A8_SRGB,
             LayoutCreateArgs {
                 shader_strages: ShaderStages::FRAGMENT,
                 min_filter: Filter::Nearest,
@@ -149,7 +150,6 @@ impl Texture {
         bytes: impl FnOnce() -> Vec<u8>,
         extent: [u32; 3],
         array_layers: Option<u32>,
-        image_format: Format,
         layout: LayoutCreateArgs,
     ) -> Arc<Self> {
         static TEXTURE_CACHE: LazyLock<RwLock<HashMap<u64, Weak<Texture>>>> =
@@ -199,7 +199,7 @@ impl Texture {
             gfx.get_allocator(),
             ImageCreateInfo {
                 image_type: ImageType::Dim2d,
-                format: image_format,
+                format: gfx.get_swapchain_format(),
                 extent,
                 array_layers: array_layers.unwrap_or(1),
                 usage: ImageUsage::SAMPLED | ImageUsage::TRANSFER_DST,
@@ -319,6 +319,10 @@ impl Texture {
             .unwrap()
             .insert(args, Arc::downgrade(&layout));
         return layout;
+    }
+
+    pub fn image_view(&self) -> Arc<ImageView> {
+        self.image_view.clone()
     }
 }
 

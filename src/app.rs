@@ -4,6 +4,11 @@ use crate::graphics::camera::Camera;
 use crate::graphics::Graphics;
 use crate::input::Input;
 use character::CharacterController;
+use egui_winit_vulkano::egui::epaint::Shadow;
+use egui_winit_vulkano::egui::Color32;
+use egui_winit_vulkano::egui::Frame;
+use egui_winit_vulkano::egui::Stroke;
+use egui_winit_vulkano::egui::Window;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -42,6 +47,27 @@ impl App {
         self.camera.position = *self.player.position();
         self.editor_camera_movement(input);
         self.tile_map_loader.update();
+
+        let ctx = gfx.gui().context();
+
+        Window::new("Performance")
+            .resizable(false)
+            .frame(
+                Frame::none()
+                    .inner_margin(3.0)
+                    .fill(Color32::from_black_alpha(170))
+                    .stroke(Stroke::new(2.0, Color32::from_black_alpha(180)))
+                    .shadow(Shadow {
+                        extrusion: 5.0,
+                        color: Color32::from_black_alpha(100),
+                    })
+                    .rounding(5.0),
+            )
+            .show(&ctx, |ui| {
+                let frame_time = delta_time.as_secs_f64();
+                ui.label(format!("frame time: {:.1} ms", frame_time * 1000.0));
+                ui.label(format!("fps: {:.0}", 1.0 / frame_time));
+            });
 
         self.tile_map.draw(gfx);
         self.player.draw(gfx);
