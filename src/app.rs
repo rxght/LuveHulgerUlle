@@ -1,24 +1,19 @@
-use character::CharacterController;
-use hud::Hotbar;
-use winit::dpi::PhysicalSize;
-
 use crate::drawables::tiles::TileMap;
 use crate::drawables::tiles::TileMapLoader;
 use crate::graphics::camera::Camera;
 use crate::graphics::Graphics;
 use crate::input::Input;
+use character::CharacterController;
 use std::sync::Arc;
 use std::time::Duration;
 
 mod character;
-mod hud;
 
 pub struct App {
     tile_map_loader: TileMapLoader,
     tile_map: Arc<TileMap>,
     player: CharacterController,
     camera: Camera,
-    hotbar: Hotbar,
 }
 
 impl App {
@@ -28,13 +23,6 @@ impl App {
         let mut loader = TileMapLoader::new();
         let tile_map = loader.load(gfx, "assets/tilemaps/bigmap.tmx", &camera);
 
-        let hotbar = Hotbar::new(gfx);
-
-        gfx.get_window().set_inner_size(PhysicalSize {
-            width: 600,
-            height: 400,
-        });
-
         let player = CharacterController::new(gfx, &camera);
 
         Self {
@@ -42,7 +30,6 @@ impl App {
             tile_map,
             player,
             camera,
-            hotbar,
         }
     }
 
@@ -56,15 +43,8 @@ impl App {
         self.editor_camera_movement(input);
         self.tile_map_loader.update();
 
-        // hotbar functionality
-        if input.keyboard.is_key_pressed(57) {
-            let slot = (self.hotbar.selected_slot() + 1) % 9;
-            self.hotbar.set_selected_slot(slot);
-        }
-
         self.tile_map.draw(gfx);
         self.player.draw(gfx);
-        self.hotbar.draw(gfx);
     }
 
     fn editor_camera_movement(&mut self, input: &Input) {

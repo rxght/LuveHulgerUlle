@@ -3,17 +3,17 @@ use std::{mem::align_of, sync::Arc};
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
-        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
-        CopyBufferInfoTyped, PrimaryAutoCommandBuffer, PrimaryCommandBufferAbstract,
+        AutoCommandBufferBuilder, CommandBufferUsage, CopyBufferInfoTyped,
+        PrimaryCommandBufferAbstract,
     },
-    memory::allocator::{AllocationCreateInfo, DeviceLayout},
+    memory::allocator::{AllocationCreateInfo, DeviceLayout, MemoryTypeFilter},
     pipeline::{graphics::vertex_input::Vertex, PipelineLayout},
     sync::GpuFuture,
 };
 
 use crate::graphics::{pipeline::PipelineBuilder, Graphics};
 
-use super::Bindable;
+use super::{Bindable, CommandBufferBuilder};
 pub struct VertexBuffer<T>
 where
     T: Vertex + BufferContents,
@@ -29,16 +29,10 @@ where
         builder.vertex_buffer_description = Some(T::per_vertex());
     }
 
-    fn bind(
-        &self,
-        _gfx: &Graphics,
-        builder: &mut AutoCommandBufferBuilder<
-            PrimaryAutoCommandBuffer,
-            StandardCommandBufferAllocator,
-        >,
-        _: Arc<PipelineLayout>,
-    ) {
-        builder.bind_vertex_buffers(0, self.subbuffer.clone());
+    fn bind(&self, _gfx: &Graphics, builder: &mut CommandBufferBuilder, _: Arc<PipelineLayout>) {
+        builder
+            .bind_vertex_buffers(0, self.subbuffer.clone())
+            .unwrap();
     }
 }
 
@@ -57,7 +51,8 @@ where
                 ..Default::default()
             },
             AllocationCreateInfo {
-                usage: vulkano::memory::allocator::MemoryUsage::Upload,
+                memory_type_filter: MemoryTypeFilter::PREFER_HOST
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
             vertices.into_iter(),
@@ -71,7 +66,7 @@ where
                 ..Default::default()
             },
             AllocationCreateInfo {
-                usage: vulkano::memory::allocator::MemoryUsage::DeviceOnly,
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
                 ..Default::default()
             },
             DeviceLayout::from_size_alignment(staging_buffer.size(), align_of::<T>() as u64)
@@ -116,16 +111,8 @@ pub struct IndexBuffer {
 }
 
 impl Bindable for IndexBuffer {
-    fn bind(
-        &self,
-        _gfx: &Graphics,
-        builder: &mut AutoCommandBufferBuilder<
-            PrimaryAutoCommandBuffer,
-            StandardCommandBufferAllocator,
-        >,
-        _: Arc<PipelineLayout>,
-    ) {
-        builder.bind_index_buffer(self.subbuffer.clone());
+    fn bind(&self, _gfx: &Graphics, builder: &mut CommandBufferBuilder, _: Arc<PipelineLayout>) {
+        builder.bind_index_buffer(self.subbuffer.clone()).unwrap();
     }
     fn bind_to_pipeline(&self, _builder: &mut PipelineBuilder) {}
 }
@@ -139,7 +126,8 @@ impl IndexBuffer {
                 ..Default::default()
             },
             AllocationCreateInfo {
-                usage: vulkano::memory::allocator::MemoryUsage::Upload,
+                memory_type_filter: MemoryTypeFilter::PREFER_HOST
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
             indices.into_iter(),
@@ -153,7 +141,7 @@ impl IndexBuffer {
                 ..Default::default()
             },
             AllocationCreateInfo {
-                usage: vulkano::memory::allocator::MemoryUsage::DeviceOnly,
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
                 ..Default::default()
             },
             DeviceLayout::from_size_alignment(staging_buffer.size(), align_of::<u32>() as u64)

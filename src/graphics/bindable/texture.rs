@@ -6,7 +6,11 @@ use std::{
 };
 
 use vulkano::{
-    command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, PrimaryCommandBufferAbstract},
+    buffer::{Buffer, BufferCreateInfo, BufferUsage},
+    command_buffer::{
+        AutoCommandBufferBuilder, CommandBufferUsage, CopyBufferToImageInfo,
+        PrimaryCommandBufferAbstract,
+    },
     descriptor_set::{
         layout::{
             DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo,
@@ -16,20 +20,21 @@ use vulkano::{
     },
     format::Format,
     image::{
-        view::{ImageView, ImageViewCreateInfo},
-        ImageDimensions, ImageViewAbstract, ImageViewType, ImmutableImage,
+        sampler::{Filter, Sampler, SamplerCreateInfo},
+        view::{ImageView, ImageViewCreateInfo, ImageViewType},
+        Image, ImageCreateInfo, ImageType, ImageUsage,
     },
-    sampler::{Filter, Sampler, SamplerCreateInfo},
+    memory::allocator::{AllocationCreateInfo, MemoryTypeFilter},
     shader::ShaderStages,
     sync::GpuFuture,
 };
 
 use crate::graphics::{pipeline::PipelineBuilder, Graphics};
 
-use super::Bindable;
+use super::{Bindable, CommandBufferBuilder};
 
 pub struct Texture {
-    image_view: Arc<ImageView<ImmutableImage>>,
+    image_view: Arc<ImageView>,
     layout: Arc<DescriptorSetLayout>,
     descriptor_set: Arc<PersistentDescriptorSet>,
 }
@@ -42,8 +47,8 @@ struct LayoutCreateArgs {
 }
 
 impl Texture {
-    pub fn dimensions(&self) -> ImageDimensions {
-        self.image_view.dimensions()
+    pub fn extent(&self) -> [u32; 3] {
+        self.image_view.image().extent()
     }
 
     pub fn new(gfx: &Graphics, path: &str, filter: Filter) -> Arc<Texture> {
@@ -52,11 +57,7 @@ impl Texture {
         let mut decoder = png::Decoder::new(source_file);
         let image_info = decoder.read_header_info().unwrap();
 
-        let image_dimensions = ImageDimensions::Dim2d {
-            width: image_info.width,
-            height: image_info.height,
-            array_layers: 1,
-        };
+        let image_extent = [image_info.width, image_info.height, 1];
 
         assert!(image_info.bytes_per_pixel() == 4);
 
@@ -69,8 +70,8 @@ impl Texture {
                 reader.next_frame(&mut buffer).unwrap();
                 buffer
             },
-            image_dimensions,
-            false,
+            image_extent,
+            None,
             Format::R8G8B8A8_SRGB,
             LayoutCreateArgs {
                 shader_strages: ShaderStages::FRAGMENT,
@@ -89,11 +90,9 @@ impl Texture {
         let cols = image_info.width / layer_dimensions[0];
         let rows = image_info.height / layer_dimensions[1];
 
-        let image_dimensions = ImageDimensions::Dim2d {
-            width: layer_dimensions[0],
-            height: layer_dimensions[1],
-            array_layers: cols * rows,
-        };
+        let extent = [layer_dimensions[0], layer_dimensions[1], 1];
+
+        let array_layers = rows * cols;
 
         assert!(image_info.bytes_per_pixel() == 4);
 
@@ -133,8 +132,8 @@ impl Texture {
             gfx,
             path,
             bytes_closure,
-            image_dimensions,
-            true,
+            extent,
+            Some(array_layers),
             Format::R8G8B8A8_SRGB,
             LayoutCreateArgs {
                 shader_strages: ShaderStages::FRAGMENT,
@@ -144,25 +143,21 @@ impl Texture {
         )
     }
 
-    fn new_inner<I>(
+    fn new_inner(
         gfx: &Graphics,
         source_file_name: &str,
-        bytes: impl FnOnce() -> I,
-        dimensions: ImageDimensions,
-        is_arrayed: bool,
+        bytes: impl FnOnce() -> Vec<u8>,
+        extent: [u32; 3],
+        array_layers: Option<u32>,
         image_format: Format,
         layout: LayoutCreateArgs,
-    ) -> Arc<Self>
-    where
-        I: IntoIterator<Item = u8>,
-        I::IntoIter: ExactSizeIterator,
-    {
+    ) -> Arc<Self> {
         static TEXTURE_CACHE: LazyLock<RwLock<HashMap<u64, Weak<Texture>>>> =
             LazyLock::new(|| RwLock::new(HashMap::new()));
         let hasher = &mut TEXTURE_CACHE.read().unwrap().hasher().build_hasher();
         source_file_name.hash(hasher);
-        dimensions.width_height_depth().hash(hasher);
-        is_arrayed.hash(hasher);
+        extent.hash(hasher);
+        array_layers.hash(hasher);
         let texture_id = hasher.finish();
 
         if let Some(texture) = TEXTURE_CACHE
@@ -181,15 +176,48 @@ impl Texture {
         )
         .unwrap();
 
-        let image = ImmutableImage::from_iter(
+        let bytes = bytes();
+
+        let staging_buffer = Buffer::new_slice(
             gfx.get_allocator(),
-            bytes(),
-            dimensions,
-            vulkano::image::MipmapsCount::One,
-            image_format,
-            &mut uploads,
+            BufferCreateInfo {
+                usage: BufferUsage::TRANSFER_SRC,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_HOST
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            },
+            bytes.len() as u64,
         )
         .unwrap();
+
+        staging_buffer.write().unwrap().copy_from_slice(&bytes);
+
+        let image = Image::new(
+            gfx.get_allocator(),
+            ImageCreateInfo {
+                image_type: ImageType::Dim2d,
+                format: image_format,
+                extent,
+                array_layers: array_layers.unwrap_or(1),
+                usage: ImageUsage::SAMPLED | ImageUsage::TRANSFER_DST,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        uploads
+            .copy_buffer_to_image(CopyBufferToImageInfo::buffer_image(
+                staging_buffer,
+                image.clone(),
+            ))
+            .unwrap();
 
         uploads
             .build()
@@ -199,13 +227,11 @@ impl Texture {
             .flush()
             .unwrap();
 
-        let view_type = match (dimensions, is_arrayed) {
-            (ImageDimensions::Dim1d { .. }, true) => ImageViewType::Dim1dArray,
-            (ImageDimensions::Dim1d { .. }, false) => ImageViewType::Dim1d,
-            (ImageDimensions::Dim2d { .. }, true) => ImageViewType::Dim2dArray,
-            (ImageDimensions::Dim2d { .. }, false) => ImageViewType::Dim2d,
-            (ImageDimensions::Dim3d { .. }, false) => ImageViewType::Dim3d,
-            (ImageDimensions::Dim3d { .. }, true) => panic!("A 3d texture can't be arrayed."),
+        let view_type = match (extent, array_layers.is_some()) {
+            ([_, _, 1], false) => ImageViewType::Dim2d,
+            ([_, _, 1], true) => ImageViewType::Dim2dArray,
+            (_, false) => ImageViewType::Dim3d,
+            (_, true) => panic!("A 3d texture can't have multiple layers."),
         };
 
         let image_view = ImageView::new(
@@ -223,6 +249,7 @@ impl Texture {
             gfx.get_descriptor_set_allocator(),
             layout.clone(),
             [WriteDescriptorSet::image_view(0, image_view.clone())],
+            [],
         )
         .unwrap();
 
@@ -275,7 +302,6 @@ impl Texture {
                     DescriptorSetLayoutBinding {
                         stages: args.shader_strages,
                         descriptor_count: 1,
-                        variable_descriptor_count: false,
                         immutable_samplers: vec![sampler],
                         ..DescriptorSetLayoutBinding::descriptor_type(
                             DescriptorType::CombinedImageSampler,
@@ -328,17 +354,16 @@ impl Bindable for TextureBinding {
     fn bind(
         &self,
         _gfx: &Graphics,
-        builder: &mut AutoCommandBufferBuilder<
-            vulkano::command_buffer::PrimaryAutoCommandBuffer,
-            vulkano::command_buffer::allocator::StandardCommandBufferAllocator,
-        >,
+        builder: &mut CommandBufferBuilder,
         pipeline_layout: Arc<vulkano::pipeline::PipelineLayout>,
     ) {
-        builder.bind_descriptor_sets(
-            vulkano::pipeline::PipelineBindPoint::Graphics,
-            pipeline_layout,
-            self.set_num,
-            unsafe { &*self.texture_ref.get() }.descriptor_set.clone(),
-        );
+        builder
+            .bind_descriptor_sets(
+                vulkano::pipeline::PipelineBindPoint::Graphics,
+                pipeline_layout,
+                self.set_num,
+                unsafe { &*self.texture_ref.get() }.descriptor_set.clone(),
+            )
+            .unwrap();
     }
 }

@@ -24,15 +24,17 @@ pub use shader::*;
 pub use texture::*;
 pub use uniform::*;
 
+type CommandBufferBuilder = AutoCommandBufferBuilder<
+    PrimaryAutoCommandBuffer<Arc<StandardCommandBufferAllocator>>,
+    Arc<StandardCommandBufferAllocator>,
+>;
+
 pub trait Bindable {
     fn bind_to_pipeline(&self, builder: &mut PipelineBuilder);
     fn bind(
         &self,
         _gfx: &Graphics,
-        _builder: &mut AutoCommandBufferBuilder<
-            PrimaryAutoCommandBuffer,
-            StandardCommandBufferAllocator,
-        >,
+        _builder: &mut CommandBufferBuilder,
         _pipeline_layout: Arc<PipelineLayout>,
     ) {
     }

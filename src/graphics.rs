@@ -3,23 +3,31 @@ pub mod camera;
 pub mod drawable;
 pub mod pipeline;
 pub mod shaders;
-pub mod ui;
 pub mod utils;
 
+use smallvec::smallvec;
+use std::array;
 use std::cmp::min;
 use std::collections::HashMap;
 use std::panic::Location;
 use std::sync::{Arc, OnceLock, RwLock, Weak};
-use ui::UiRenderer;
-use vulkano::command_buffer::allocator::StandardCommandBufferAlloc;
-use vulkano::command_buffer::{PrimaryAutoCommandBuffer, RenderPassBeginInfo};
-use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
+use vulkano::command_buffer::{
+    PrimaryAutoCommandBuffer, PrimaryCommandBufferAbstract, RenderPassBeginInfo, SubpassBeginInfo,
+    SubpassEndInfo,
+};
+use vulkano::descriptor_set::allocator::{
+    StandardDescriptorSetAllocator, StandardDescriptorSetAllocatorCreateInfo,
+};
 use vulkano::format::{ClearValue, FormatFeatures};
-use vulkano::image::{AttachmentImage, ImageTiling};
-use vulkano::render_pass::SubpassDependency;
-use winit::event::Event;
-
-use crate::input::Input;
+use vulkano::image::sampler::ComponentMapping;
+use vulkano::image::view::ImageViewType;
+use vulkano::image::{Image, ImageCreateInfo, ImageTiling, ImageType};
+use vulkano::instance::InstanceCreateFlags;
+use vulkano::memory::allocator::AllocationCreateInfo;
+use vulkano::render_pass::{AttachmentLoadOp, AttachmentStoreOp, SubpassDependency};
+use vulkano::swapchain::SurfaceInfo;
+use vulkano::sync::future::FenceSignalFuture;
+use vulkano::{Validated, VulkanError};
 
 use self::drawable::{Drawable, DrawableSharedPart};
 use vulkano::sync::{AccessFlags, PipelineStages};
@@ -34,32 +42,24 @@ use vulkano::{
     format::Format,
     image::{
         view::{ImageView, ImageViewCreateInfo},
-        ImageAspects, ImageLayout, ImageSubresourceRange, ImageUsage, SampleCount, SwapchainImage,
+        ImageAspects, ImageLayout, ImageSubresourceRange, ImageUsage, SampleCount,
     },
-    instance::{
-        debug::{DebugUtilsMessenger, DebugUtilsMessengerCreateInfo, ValidationFeatureEnable},
-        Instance, InstanceCreateInfo, InstanceExtensions,
-    },
+    instance::{debug::ValidationFeatureEnable, Instance, InstanceCreateInfo, InstanceExtensions},
     memory::allocator::StandardMemoryAllocator,
     pipeline::graphics::viewport::Viewport,
     render_pass::{
-        AttachmentDescription, AttachmentReference, Framebuffer, FramebufferCreateInfo, LoadOp,
-        RenderPass, RenderPassCreateInfo, StoreOp, SubpassDescription,
+        AttachmentDescription, AttachmentReference, Framebuffer, FramebufferCreateInfo, RenderPass,
+        RenderPassCreateInfo, SubpassDescription,
     },
-    sampler::ComponentMapping,
     swapchain::{
         acquire_next_image, ColorSpace, CompositeAlpha, Surface, Swapchain, SwapchainCreateInfo,
         SwapchainPresentInfo,
     },
-    sync::{FlushError, GpuFuture, Sharing},
+    sync::{GpuFuture, Sharing},
     Version, VulkanLibrary,
 };
-use vulkano_win::VkSurfaceBuild;
-use winit::{
-    dpi::LogicalSize,
-    event_loop::EventLoop,
-    window::{Window, WindowBuilder},
-};
+
+use winit::{event_loop::EventLoop, window::Window};
 
 const IN_FLIGHT_COUNT: usize = 2;
 
@@ -123,9 +123,9 @@ pub struct Graphics {
     device: Arc<Device>,
     queues: Queues,
 
-    allocator: StandardMemoryAllocator,
-    cmd_allocator: StandardCommandBufferAllocator,
-    descriptor_set_allocator: StandardDescriptorSetAllocator,
+    allocator: Arc<StandardMemoryAllocator>,
+    cmd_allocator: Arc<StandardCommandBufferAllocator>,
+    descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
 
     swapchain: Arc<Swapchain>,
     //swapchain_images: Vec<Arc<SwapchainImage>>,
@@ -137,33 +137,38 @@ pub struct Graphics {
     draw_queue: Vec<Arc<Drawable>>,
 
     utils: OnceLock<utils::Utils>,
-    ui_renderer: UiRenderer,
 
-    main_command_buffer: Option<PrimaryAutoCommandBuffer<StandardCommandBufferAlloc>>,
-    futures: Vec<Option<Box<dyn GpuFuture>>>,
+    main_command_buffer: Option<Arc<PrimaryAutoCommandBuffer<Arc<StandardCommandBufferAllocator>>>>,
+    futures: [FenceSignalFuture<Box<dyn GpuFuture>>; IN_FLIGHT_COUNT],
     inflight_index: u32,
     framebuffer_index: u32,
 }
 
 impl Graphics {
-    pub fn new() -> (Graphics, EventLoop<()>) {
+    pub fn new(window: Window, event_loop: &EventLoop<()>) -> Graphics {
+        let window = Arc::new(window);
+
         let library = VulkanLibrary::new().expect("Vulkan library is not installed.");
 
-        let instance = create_instance(library.clone());
+        let instance = create_instance(library.clone(), event_loop);
 
-        //let debug_messenger = create_debug_messenger(instance.clone());
-
-        let (event_loop, surface) = create_window(instance.clone());
+        let surface = Surface::from_window(instance.clone(), window.clone()).unwrap();
 
         let physical_device = create_physical_device(instance.clone(), surface.clone());
 
         let (device, queues) = create_logical_device(physical_device.clone(), surface.clone());
 
-        let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
 
-        let cmd_allocator = StandardCommandBufferAllocator::new(device.clone(), Default::default());
+        let cmd_allocator = Arc::new(StandardCommandBufferAllocator::new(
+            device.clone(),
+            Default::default(),
+        ));
 
-        let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
+        let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
+            device.clone(),
+            StandardDescriptorSetAllocatorCreateInfo::default(),
+        ));
 
         let (swapchain, swapchain_images) = create_swapchain(device.clone(), surface.clone());
 
@@ -172,57 +177,65 @@ impl Graphics {
         let swapchain_image_views = create_image_views(&swapchain_images, swapchain.clone());
 
         let (depth_buffers, depth_format) =
-            create_depth_buffer(device.clone(), swapchain.clone(), &memory_allocator);
+            create_depth_buffers(device.clone(), swapchain.clone(), memory_allocator.clone());
 
         let main_render_pass =
             create_main_render_pass(device.clone(), swapchain.image_format(), depth_format);
 
         let framebuffers = create_framebuffers(
-            &swapchain_image_views,
+            swapchain_image_views,
             main_render_pass.clone(),
-            &depth_buffers,
+            depth_buffers,
         );
 
-        let mut futures = Vec::with_capacity(IN_FLIGHT_COUNT);
-        futures.resize_with(IN_FLIGHT_COUNT, || None);
-
-        let window = surface.object().unwrap().clone().downcast().unwrap();
+        let futures = array::from_fn(|_| {
+            let empty_command_buffer = AutoCommandBufferBuilder::primary(
+                &cmd_allocator,
+                queues.graphics_queue.as_ref().unwrap().queue_family_index(),
+                CommandBufferUsage::OneTimeSubmit,
+            )
+            .unwrap();
+            let future = empty_command_buffer
+                .build()
+                .unwrap()
+                .execute(queues.graphics_queue.as_ref().unwrap().clone())
+                .unwrap();
+            future.boxed().then_signal_fence_and_flush().unwrap()
+        });
 
         #[allow(unused_mut)]
         let mut gfx = Graphics {
-            //library: library,
-            //instance: instance,
-            //debug_messenger: None,
-            surface: surface,
-            window: window,
-            //physical_device: physical_device,
-            device: device,
-            queues: queues,
+            //library,
+            //instance,
+            surface,
+            window,
+            //physical_device,
+            device,
+            queues,
 
             allocator: memory_allocator,
-            cmd_allocator: cmd_allocator,
-            descriptor_set_allocator: descriptor_set_allocator,
+            cmd_allocator,
+            descriptor_set_allocator,
 
-            swapchain: swapchain,
-            //swapchain_images: swapchain_images,
-            main_render_pass: main_render_pass,
-            framebuffers: framebuffers,
+            swapchain,
+            //swapchain_images,
+            main_render_pass,
+            framebuffers,
 
             shared_data_map: RwLock::new(HashMap::new()),
             draw_queue: Vec::new(),
 
             utils: OnceLock::new(),
-            ui_renderer: UiRenderer::new(),
 
             main_command_buffer: None,
-            futures: futures,
+            futures,
             inflight_index: 0,
             framebuffer_index: 0,
         };
 
         _ = gfx.utils.set(utils::Utils::new(&gfx));
 
-        (gfx, event_loop)
+        gfx
     }
 
     pub fn get_device(&self) -> Arc<Device> {
@@ -231,8 +244,8 @@ impl Graphics {
     pub fn get_main_render_pass(&self) -> Arc<RenderPass> {
         self.main_render_pass.clone()
     }
-    pub fn get_allocator(&self) -> &StandardMemoryAllocator {
-        &self.allocator
+    pub fn get_allocator(&self) -> Arc<StandardMemoryAllocator> {
+        self.allocator.clone()
     }
     pub fn get_shared_data(&self, id: &Location<'static>) -> Option<Arc<DrawableSharedPart>> {
         self.shared_data_map
@@ -271,14 +284,14 @@ impl Graphics {
                 .as_ref()
                 .unwrap()
                 .queue_family_index(),
-            CommandBufferUsage::OneTimeSubmit,
+            CommandBufferUsage::SimultaneousUse,
         )
         .unwrap();
 
         let viewport = Viewport {
-            origin: [0.0, 0.0],
-            dimensions: self.swapchain.image_extent().map(|int| int as f32),
-            depth_range: 0.0..1.0,
+            offset: [0.0, 0.0],
+            extent: self.swapchain.image_extent().map(|int| int as f32),
+            depth_range: 0.0..=1.0,
         };
 
         builder
@@ -293,10 +306,11 @@ impl Graphics {
                         self.framebuffers[self.framebuffer_index as usize].clone(),
                     )
                 },
-                vulkano::command_buffer::SubpassContents::Inline,
+                SubpassBeginInfo::default(),
             )
             .unwrap()
-            .set_viewport(0, [viewport.clone()]);
+            .set_viewport(0, smallvec![viewport.clone()])
+            .unwrap();
 
         for drawable in self.draw_queue.iter() {
             for bindable in drawable.get_bindables() {
@@ -307,7 +321,9 @@ impl Graphics {
                 bindable.bind(&self, &mut builder, drawable.get_pipeline_layout());
             }
 
-            builder.bind_pipeline_graphics(drawable.get_pipeline());
+            builder
+                .bind_pipeline_graphics(drawable.get_pipeline())
+                .unwrap();
             builder
                 .draw_indexed(drawable.get_index_count(), 1, 0, 0, 0)
                 .unwrap();
@@ -315,7 +331,7 @@ impl Graphics {
 
         self.draw_queue.truncate(0);
 
-        builder.end_render_pass().unwrap();
+        builder.end_render_pass(SubpassEndInfo::default()).unwrap();
         self.main_command_buffer = Some(builder.build().unwrap());
     }
 
@@ -331,30 +347,9 @@ impl Graphics {
         return true;
     }
 
-    pub fn clear_last_frame(&mut self) {
-        self.ui_renderer.clear_last_frame();
-    }
-
     pub fn draw_frame(&mut self) {
-
-        // add ui_elements to the draw queue
-        let ui_elements = self.ui_renderer.elements();
-        self.draw_queue.extend(ui_elements.iter().map(|elem| elem.get_drawable()));
-
-        if let Some(last_frame_future) = self.futures[self.inflight_index as usize].take() {
-            match last_frame_future.then_signal_fence_and_flush() {
-                Ok(mut future) => {
-                    future.wait(None).unwrap();
-                    future.cleanup_finished();
-                }
-                Err(FlushError::OutOfDate) => {
-                    self.recreate_swapchain();
-                }
-                Err(e) => {
-                    println!("failed to flush future: {e}");
-                }
-            };
-        }
+        let future = &self.futures[self.inflight_index as usize];
+        future.wait(None).unwrap();
 
         let (image_index, suboptimal, acquire_future) =
             acquire_next_image(self.swapchain.clone(), None).unwrap();
@@ -366,7 +361,7 @@ impl Graphics {
             _ => {}
         };
 
-        let new_future = acquire_future
+        let new_future_result = acquire_future
             .then_execute(
                 self.queues.graphics_queue.clone().unwrap(),
                 self.main_command_buffer.take().unwrap(),
@@ -375,9 +370,18 @@ impl Graphics {
             .then_swapchain_present(
                 self.queues.graphics_queue.clone().unwrap(),
                 SwapchainPresentInfo::swapchain_image_index(self.swapchain.clone(), image_index),
-            );
+            )
+            .boxed()
+            .then_signal_fence_and_flush();
 
-        self.futures[self.inflight_index as usize] = Some(new_future.boxed());
+        self.futures[self.inflight_index as usize] = match new_future_result {
+            Ok(v) => v,
+            Err(Validated::Error(VulkanError::OutOfDate)) => {
+                self.recreate_swapchain();
+                return;
+            }
+            Err(e) => panic!("Failed to flush future: {e:?}"),
+        };
 
         if suboptimal {
             self.recreate_swapchain();
@@ -394,14 +398,6 @@ impl Graphics {
     }
 
     pub fn recreate_swapchain(&mut self) {
-        for future in &mut self.futures {
-            if let Some(future) = future.take() {
-                if let Ok(fence_future) = future.then_signal_fence_and_flush() {
-                    fence_future.wait(None).unwrap();
-                }
-            }
-        }
-
         let capabilities = self
             .device
             .physical_device()
@@ -440,11 +436,14 @@ impl Graphics {
 
         let image_views = create_image_views(&swapchain_images, swapchain.clone());
 
-        let (depth_buffers, _) =
-            create_depth_buffer(self.device.clone(), self.swapchain.clone(), &self.allocator);
+        let (depth_buffers, _) = create_depth_buffers(
+            self.device.clone(),
+            self.swapchain.clone(),
+            self.allocator.clone(),
+        );
 
         let framebuffers =
-            create_framebuffers(&image_views, self.main_render_pass.clone(), &depth_buffers);
+            create_framebuffers(image_views, self.main_render_pass.clone(), depth_buffers);
 
         self.swapchain = swapchain;
         self.framebuffers = framebuffers;
@@ -466,56 +465,22 @@ impl Graphics {
     pub fn utils(&self) -> &utils::Utils {
         self.utils.get().unwrap()
     }
-
-    pub fn ui_renderer_mut(&mut self) -> &mut UiRenderer {
-        &mut self.ui_renderer
-    }
-
-    pub fn handle_event(&mut self, input_state: &Input, event: &Event<'_, ()>) -> bool {
-        self.ui_renderer
-            .handle_event(event, input_state, self.window.inner_size().into())
-    }
 }
 
-fn create_instance(library: Arc<VulkanLibrary>) -> Arc<Instance> {
-    let required_extensions = vulkano_win::required_extensions(&library);
+fn create_instance(library: Arc<VulkanLibrary>, event_loop: &EventLoop<()>) -> Arc<Instance> {
+    let required_extensions = Surface::required_extensions(event_loop);
 
     let create_info = InstanceCreateInfo {
         application_name: Some(String::from("Rosten")),
+        flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
         enabled_extensions: required_extensions.union(&INSTANCE_EXTENSIONS),
         enabled_layers: VALIDATION_LAYERS.iter().map(|p| String::from(*p)).collect(),
-        enumerate_portability: false,
         max_api_version: None,
         enabled_validation_features: Vec::from(ENABLED_VALIDATION_FEATURES),
         ..InstanceCreateInfo::default()
     };
 
     Instance::new(library.clone(), create_info).expect("Failed to create instance!")
-}
-
-fn create_debug_messenger(instance: Arc<Instance>) -> DebugUtilsMessenger {
-    unsafe {
-        DebugUtilsMessenger::new(
-            instance,
-            DebugUtilsMessengerCreateInfo::user_callback(Arc::new(
-                |msg: &vulkano::instance::debug::Message<'_>| {
-                    println!("DEBUG MESSENGER!!!! {}", msg.description);
-                },
-            )),
-        )
-        .unwrap()
-    }
-}
-
-fn create_window(instance: Arc<Instance>) -> (EventLoop<()>, Arc<Surface>) {
-    let event_loop = EventLoop::new();
-    let surface = WindowBuilder::new()
-        .with_inner_size(LogicalSize::new(600, 400))
-        .with_resizable(true)
-        .with_title("Batako")
-        .build_vk_surface(&event_loop, instance.clone())
-        .expect("Failed to create window surface!");
-    (event_loop, surface)
 }
 
 fn create_physical_device(instance: Arc<Instance>, surface: Arc<Surface>) -> Arc<PhysicalDevice> {
@@ -647,7 +612,7 @@ fn create_logical_device(
 fn create_swapchain(
     device: Arc<Device>,
     surface: Arc<Surface>,
-) -> (Arc<Swapchain>, Vec<Arc<SwapchainImage>>) {
+) -> (Arc<Swapchain>, Vec<Arc<Image>>) {
     let (capabilities, formats, present_modes) = (
         device
             .physical_device()
@@ -659,7 +624,7 @@ fn create_swapchain(
             .unwrap(),
         device
             .physical_device()
-            .surface_present_modes(surface.as_ref())
+            .surface_present_modes(surface.as_ref(), SurfaceInfo::default())
             .unwrap(),
     );
 
@@ -708,7 +673,7 @@ fn create_swapchain(
             Some(max) => min(capabilities.min_image_count + 1, max),
             None => capabilities.min_image_count + 1,
         },
-        image_format: Some(surface_format.0),
+        image_format: surface_format.0,
         image_color_space: surface_format.1,
         image_extent: extent,
         image_array_layers: 1,
@@ -732,18 +697,15 @@ fn create_swapchain(
         .expect("Failed to create Swapchain!")
 }
 
-fn create_image_views(
-    images: &Vec<Arc<SwapchainImage>>,
-    swapchain: Arc<Swapchain>,
-) -> Vec<Arc<ImageView<SwapchainImage>>> {
+fn create_image_views(images: &Vec<Arc<Image>>, swapchain: Arc<Swapchain>) -> Vec<Arc<ImageView>> {
     images
         .iter()
         .map(|image| {
             ImageView::new(
                 image.clone(),
                 ImageViewCreateInfo {
-                    view_type: vulkano::image::ImageViewType::Dim2d,
-                    format: Some(swapchain.image_format()),
+                    view_type: ImageViewType::Dim2d,
+                    format: swapchain.image_format(),
                     component_mapping: ComponentMapping::identity(),
                     subresource_range: ImageSubresourceRange {
                         aspects: ImageAspects::COLOR,
@@ -766,23 +728,19 @@ fn create_main_render_pass(
 ) -> Arc<RenderPass> {
     let attachments = vec![
         AttachmentDescription {
-            format: Some(swapchain_format),
+            format: swapchain_format,
             samples: SampleCount::Sample1,
-            load_op: LoadOp::Clear,
-            store_op: StoreOp::Store,
-            stencil_load_op: LoadOp::DontCare,
-            stencil_store_op: StoreOp::DontCare,
+            load_op: AttachmentLoadOp::Clear,
+            store_op: AttachmentStoreOp::Store,
             initial_layout: ImageLayout::Undefined,
             final_layout: ImageLayout::PresentSrc,
             ..Default::default()
         },
         AttachmentDescription {
-            format: Some(depth_format),
+            format: depth_format,
             samples: SampleCount::Sample1,
-            load_op: LoadOp::Clear,
-            store_op: StoreOp::Store,
-            stencil_load_op: LoadOp::DontCare,
-            stencil_store_op: StoreOp::DontCare,
+            load_op: AttachmentLoadOp::Clear,
+            store_op: AttachmentStoreOp::Store,
             initial_layout: ImageLayout::Undefined,
             final_layout: ImageLayout::DepthStencilAttachmentOptimal,
             ..AttachmentDescription::default()
@@ -830,21 +788,24 @@ fn create_main_render_pass(
 }
 
 fn create_framebuffers(
-    image_views: &Vec<Arc<ImageView<SwapchainImage>>>,
+    image_views: Vec<Arc<ImageView>>,
     render_pass: Arc<RenderPass>,
-    depth_buffers: &Vec<Arc<ImageView<AttachmentImage>>>,
+    depth_buffers: Vec<Arc<ImageView>>,
 ) -> Vec<Arc<Framebuffer>> {
     image_views
-        .iter()
-        .zip(depth_buffers)
+        .into_iter()
+        .zip(depth_buffers.into_iter())
         .map(|(image, depth_buffer)| {
-            let create_info = FramebufferCreateInfo {
-                attachments: vec![image.clone(), depth_buffer.clone()],
-                extent: [0, 0],
-                layers: 1,
-                ..Default::default()
-            };
-            Framebuffer::new(render_pass.clone(), create_info).unwrap()
+            Framebuffer::new(
+                render_pass.clone(),
+                FramebufferCreateInfo {
+                    attachments: vec![image, depth_buffer],
+                    extent: [0, 0],
+                    layers: 1,
+                    ..Default::default()
+                },
+            )
+            .unwrap()
         })
         .collect()
 }
@@ -867,11 +828,11 @@ fn select_image_format(
     None
 }
 
-fn create_depth_buffer(
+fn create_depth_buffers(
     device: Arc<Device>,
     swapchain: Arc<Swapchain>,
-    allocator: &StandardMemoryAllocator,
-) -> (Vec<Arc<ImageView<AttachmentImage>>>, Format) {
+    allocator: Arc<StandardMemoryAllocator>,
+) -> (Vec<Arc<ImageView>>, Format) {
     let format_candidates = [
         Format::D16_UNORM,
         Format::D32_SFLOAT,
@@ -888,26 +849,29 @@ fn create_depth_buffer(
     )
     .unwrap();
 
-    let mut views = Vec::new();
-    views.resize_with(swapchain.image_count() as usize, || {
-        let image = AttachmentImage::with_usage(
-            allocator,
-            swapchain.image_extent(),
-            format,
-            ImageUsage::DEPTH_STENCIL_ATTACHMENT,
-        )
-        .unwrap();
+    let [x, y] = swapchain.image_extent();
+    let extent = [x, y, 1];
 
-        ImageView::new(
-            image.clone(),
-            ImageViewCreateInfo {
-                format: Some(format),
-                usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT,
-                ..ImageViewCreateInfo::from_image(&image)
-            },
-        )
-        .unwrap()
-    });
+    let depth_buffers = (0..swapchain.image_count())
+        .map(|_| {
+            ImageView::new_default(
+                Image::new(
+                    allocator.clone(),
+                    ImageCreateInfo {
+                        image_type: ImageType::Dim2d,
+                        format: Format::D16_UNORM,
+                        extent,
+                        usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT
+                            | ImageUsage::TRANSIENT_ATTACHMENT,
+                        ..Default::default()
+                    },
+                    AllocationCreateInfo::default(),
+                )
+                .unwrap(),
+            )
+            .unwrap()
+        })
+        .collect();
 
-    (views, format)
+    (depth_buffers, format)
 }

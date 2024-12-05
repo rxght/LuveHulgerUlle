@@ -8,11 +8,9 @@ opt-level = 0
 
 [dependencies]
 
-vulkano = { version = "0.33", features = ["serde"] }
-vulkano-shaders = "0.33"
+vulkano = { version = "0.34", features = ["serde"] }
+vulkano-shaders = "0.34"
 winit = "0.28"
-vulkano-win = "0.33"
-vulkano-util = "0.33"
 
 bytemuck = "1.14.0"
 smallvec = "1.0"

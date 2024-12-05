@@ -6,18 +6,14 @@ use std::{
 
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
-    command_buffer::{
-        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder,
-        PrimaryAutoCommandBuffer,
-    },
     descriptor_set::{
         layout::{
             DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo,
             DescriptorType,
         },
-        PersistentDescriptorSet, WriteDescriptorSet,
+        DescriptorBufferInfo, PersistentDescriptorSet, WriteDescriptorSet,
     },
-    memory::allocator::{AllocationCreateInfo, MemoryUsage},
+    memory::allocator::{AllocationCreateInfo, MemoryTypeFilter},
     pipeline::PipelineLayout,
     shader::ShaderStages,
     sync::Sharing,
@@ -25,7 +21,7 @@ use vulkano::{
 
 use crate::graphics::{pipeline::PipelineBuilder, Graphics};
 
-use super::Bindable;
+use super::{Bindable, CommandBufferBuilder};
 
 struct UniformBufferMutablePart<T> {
     pub subbuffer_validity: Vec<bool>,
@@ -59,7 +55,7 @@ where
                         ..Default::default()
                     },
                     AllocationCreateInfo {
-                        usage: MemoryUsage::Upload,
+                        memory_type_filter: MemoryTypeFilter::HOST_RANDOM_ACCESS,
                         ..Default::default()
                     },
                 )
@@ -79,7 +75,6 @@ where
                     binding,
                     DescriptorSetLayoutBinding {
                         descriptor_count: 1,
-                        variable_descriptor_count: false,
                         stages: stages,
                         ..DescriptorSetLayoutBinding::descriptor_type(DescriptorType::UniformBuffer)
                     },
@@ -97,9 +92,12 @@ where
                 layout.clone(),
                 [WriteDescriptorSet::buffer_with_range(
                     binding,
-                    subbuffer.clone(),
-                    0..size_of::<T>() as u64,
+                    DescriptorBufferInfo {
+                        buffer: subbuffer.as_bytes().clone(),
+                        range: 0..size_of::<T>() as u64,
+                    },
                 )],
+                [],
             )
             .unwrap()
         }) {
@@ -165,10 +163,7 @@ where
     fn bind(
         &self,
         gfx: &Graphics,
-        builder: &mut AutoCommandBufferBuilder<
-            PrimaryAutoCommandBuffer,
-            StandardCommandBufferAllocator,
-        >,
+        builder: &mut CommandBufferBuilder,
         pipeline_layout: Arc<PipelineLayout>,
     ) {
         let in_flight_index = gfx.get_in_flight_index();
@@ -190,11 +185,13 @@ where
             }
         }
 
-        builder.bind_descriptor_sets(
-            vulkano::pipeline::PipelineBindPoint::Graphics,
-            pipeline_layout.clone(),
-            self.set_num,
-            self.uniform_buffer_ref.descriptor_sets[in_flight_index].clone(),
-        );
+        builder
+            .bind_descriptor_sets(
+                vulkano::pipeline::PipelineBindPoint::Graphics,
+                pipeline_layout.clone(),
+                self.set_num,
+                self.uniform_buffer_ref.descriptor_sets[in_flight_index].clone(),
+            )
+            .unwrap();
     }
 }

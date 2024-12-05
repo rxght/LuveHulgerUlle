@@ -1,4 +1,5 @@
-use std::sync::Arc;
+use smallvec::smallvec;
+use std::{collections::HashSet, sync::Arc};
 use vulkano::{
     descriptor_set::layout::DescriptorSetLayout,
     device::Device,
@@ -13,13 +14,14 @@ use vulkano::{
             input_assembly::InputAssemblyState,
             multisample::MultisampleState,
             rasterization::{CullMode, FrontFace, RasterizationState},
-            render_pass::PipelineRenderPassType,
+            subpass::PipelineSubpassType,
             tessellation::TessellationState,
-            vertex_input::VertexBufferDescription,
-            viewport::ViewportState,
+            vertex_input::{VertexBufferDescription, VertexDefinition},
+            viewport::{Scissor, Viewport, ViewportState},
+            GraphicsPipelineCreateInfo,
         },
         layout::{PipelineLayoutCreateInfo, PushConstantRange},
-        GraphicsPipeline, PipelineLayout, StateMode,
+        DynamicState, GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo,
     },
     render_pass::Subpass,
     shader::ShaderModule,
@@ -39,7 +41,7 @@ pub struct PipelineBuilder {
     pub depth_stencil_state: DepthStencilState,
     pub discard_rectangle_state: DiscardRectangleState,
     pub multisample_state: MultisampleState,
-    pub tessellation_state: TessellationState,
+    pub tessellation_state: Option<TessellationState>,
 
     descriptor_set_layouts: Vec<Option<Arc<DescriptorSetLayout>>>,
     pub push_constant_ranges: Vec<PushConstantRange>,
@@ -50,35 +52,41 @@ impl PipelineBuilder {
         Self {
             subpass: Subpass::from(gfx.get_main_render_pass(), 0).unwrap(),
             vertex_buffer_description: None,
-            input_assembly_state: InputAssemblyState::new(),
+            input_assembly_state: InputAssemblyState::default(),
             vertex_shader: None,
             fragment_shader: None,
-            viewport_state: ViewportState::viewport_dynamic_scissor_irrelevant(),
+            viewport_state: ViewportState {
+                viewports: smallvec![Viewport {
+                    offset: [0.0, 0.0],
+                    extent: [1.0, 1.0],
+                    depth_range: 0.0..=1.0
+                }],
+                scissors: smallvec![Scissor::default()],
+                ..Default::default()
+            },
             color_blend_state: ColorBlendState {
                 attachments: vec![ColorBlendAttachmentState {
                     blend: Some(AttachmentBlend {
-                        color_op: BlendOp::Add,
-                        color_source: BlendFactor::SrcAlpha,
-                        color_destination: BlendFactor::OneMinusSrcAlpha,
-                        alpha_op: BlendOp::Add,
-                        alpha_source: BlendFactor::One,
-                        alpha_destination: BlendFactor::One,
+                        src_color_blend_factor: BlendFactor::SrcAlpha,
+                        dst_color_blend_factor: BlendFactor::OneMinusSrcAlpha,
+                        color_blend_op: BlendOp::Add,
+                        ..Default::default()
                     }),
                     color_write_mask: ColorComponents::all(),
-                    color_write_enable: StateMode::Fixed(true),
+                    color_write_enable: true,
                 }],
                 ..Default::default()
             },
             rasterization_state: RasterizationState {
-                cull_mode: StateMode::Fixed(CullMode::Back),
-                front_face: StateMode::Fixed(FrontFace::Clockwise),
+                cull_mode: CullMode::Back,
+                front_face: FrontFace::Clockwise,
                 depth_bias: None,
                 ..Default::default()
             },
-            depth_stencil_state: DepthStencilState::disabled(),
-            discard_rectangle_state: DiscardRectangleState::new(),
-            multisample_state: MultisampleState::new(),
-            tessellation_state: TessellationState::new(),
+            depth_stencil_state: DepthStencilState::default(),
+            discard_rectangle_state: DiscardRectangleState::default(),
+            multisample_state: MultisampleState::default(),
+            tessellation_state: None,
 
             descriptor_set_layouts: Vec::new(),
             push_constant_ranges: Vec::new(),
@@ -95,14 +103,14 @@ impl PipelineBuilder {
     }
 
     pub fn build(self, device: Arc<Device>) -> (Arc<GraphicsPipeline>, Arc<PipelineLayout>) {
-        let vertex_shader_entry = self
+        let vs = self
             .vertex_shader
             .as_ref()
             .expect("No vertex shader supplied.")
             .entry_point("main")
             .unwrap();
 
-        let fragment_shader_entry = self
+        let fs = self
             .fragment_shader
             .as_ref()
             .expect("No fragment shader supplied.")
@@ -129,23 +137,41 @@ impl PipelineBuilder {
         )
         .unwrap();
 
-        (
-            GraphicsPipeline::start()
-                .render_pass(PipelineRenderPassType::BeginRenderPass(self.subpass))
-                .vertex_input_state(self.vertex_buffer_description.unwrap())
-                .input_assembly_state(self.input_assembly_state)
-                .vertex_shader(vertex_shader_entry, ())
-                .fragment_shader(fragment_shader_entry, ())
-                .viewport_state(self.viewport_state)
-                .color_blend_state(self.color_blend_state)
-                .rasterization_state(self.rasterization_state)
-                .depth_stencil_state(self.depth_stencil_state)
-                .discard_rectangle_state(self.discard_rectangle_state)
-                .multisample_state(self.multisample_state)
-                .tessellation_state(self.tessellation_state)
-                .with_pipeline_layout(device.clone(), layout.clone())
-                .expect("Failed to create pipeline!"),
-            layout,
+        let vertex_input_state = Some(
+            self.vertex_buffer_description
+                .unwrap()
+                .per_vertex()
+                .definition(&vs.info().input_interface)
+                .unwrap(),
+        );
+
+        let stages = [vs, fs]
+            .into_iter()
+            .map(|ep| PipelineShaderStageCreateInfo::new(ep))
+            .collect();
+
+        let pipeline = GraphicsPipeline::new(
+            device.clone(),
+            None,
+            GraphicsPipelineCreateInfo {
+                stages,
+                vertex_input_state,
+                input_assembly_state: Some(self.input_assembly_state),
+                tessellation_state: self.tessellation_state,
+                viewport_state: Some(self.viewport_state),
+                rasterization_state: Some(self.rasterization_state),
+                multisample_state: Some(self.multisample_state),
+                depth_stencil_state: Some(self.depth_stencil_state),
+                color_blend_state: Some(self.color_blend_state),
+                dynamic_state: HashSet::from_iter([DynamicState::Viewport]),
+                subpass: Some(PipelineSubpassType::BeginRenderPass(self.subpass)),
+                base_pipeline: None,
+                discard_rectangle_state: None,
+                ..GraphicsPipelineCreateInfo::layout(layout.clone())
+            },
         )
+        .unwrap();
+
+        (pipeline, layout)
     }
 }

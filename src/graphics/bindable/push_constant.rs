@@ -5,17 +5,13 @@ use std::{
 
 use vulkano::{
     buffer::BufferContents,
-    command_buffer::{
-        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder,
-        PrimaryAutoCommandBuffer,
-    },
     pipeline::{layout::PushConstantRange, PipelineLayout},
     shader::ShaderStages,
 };
 
 use crate::graphics::{pipeline::PipelineBuilder, Graphics};
 
-use super::Bindable;
+use super::{Bindable, CommandBufferBuilder};
 
 pub struct PushConstant<T>
 where
@@ -62,16 +58,15 @@ where
     fn bind(
         &self,
         _gfx: &Graphics,
-        builder: &mut AutoCommandBufferBuilder<
-            PrimaryAutoCommandBuffer,
-            StandardCommandBufferAllocator,
-        >,
+        builder: &mut CommandBufferBuilder,
         pipeline_layout: Arc<PipelineLayout>,
     ) {
-        builder.push_constants(
-            pipeline_layout.clone(),
-            self.push_constant_range.offset,
-            self.data.lock().unwrap().clone(),
-        );
+        builder
+            .push_constants(
+                pipeline_layout.clone(),
+                self.push_constant_range.offset,
+                self.data.lock().unwrap().clone(),
+            )
+            .unwrap();
     }
 }

@@ -27,11 +27,7 @@ pub struct DynamicTile {
 
 impl DynamicTile {
     pub fn new(gfx: &Graphics, initial_texture: Arc<Texture>, camera: &Camera) -> Self {
-        let tile_dimensions = initial_texture.dimensions().width_height();
-        assert!(
-            initial_texture.dimensions().array_layers() > 1,
-            "Dynamic tile requires a texture with multiple layers."
-        );
+        let tile_dimensions = initial_texture.extent();
 
         let object_data = bindable::PushConstant::new(
             0,
