@@ -7,18 +7,27 @@ use character::CharacterController;
 use egui_winit_vulkano::egui::epaint::Shadow;
 use egui_winit_vulkano::egui::Color32;
 use egui_winit_vulkano::egui::Frame;
+use egui_winit_vulkano::egui::Slider;
 use egui_winit_vulkano::egui::Stroke;
 use egui_winit_vulkano::egui::Window;
+use hud::Healthbar;
+use hud::Hotbar;
 use std::sync::Arc;
 use std::time::Duration;
 
 mod character;
+mod hud;
 
 pub struct App {
     tile_map_loader: TileMapLoader,
     tile_map: Arc<TileMap>,
     player: CharacterController,
     camera: Camera,
+    hotbar: Hotbar,
+    healthbar: Healthbar,
+
+    health_level: u32,
+    hotbar_slot: u32,
 }
 
 impl App {
@@ -35,6 +44,10 @@ impl App {
             tile_map,
             player,
             camera,
+            hotbar: Hotbar::new(gfx),
+            healthbar: Healthbar::new(gfx),
+            health_level: 20,
+            hotbar_slot: 1,
         }
     }
 
@@ -67,10 +80,14 @@ impl App {
                 let frame_time = delta_time.as_secs_f64();
                 ui.label(format!("frame time: {:.1} ms", frame_time * 1000.0));
                 ui.label(format!("fps: {:.0}", 1.0 / frame_time));
+                ui.add(Slider::new(&mut self.health_level, 0..=20).text("Health: "));
+                ui.add(Slider::new(&mut self.hotbar_slot, 1..=9).text("Hotbar slot: "));
             });
-
+        
         self.tile_map.draw(gfx);
         self.player.draw(gfx);
+        self.hotbar.draw(gfx, self.hotbar_slot - 1, 4.0);
+        self.healthbar.draw(gfx, self.health_level, 4.0);
     }
 
     fn editor_camera_movement(&mut self, input: &Input) {

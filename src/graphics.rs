@@ -201,7 +201,11 @@ impl Graphics {
             queues.graphics_queue.clone().unwrap(),
             Subpass::from(main_render_pass.clone(), 1).unwrap(),
             swapchain.image_format(),
-            GuiConfig::default(),
+            GuiConfig{
+                allow_srgb_render_target: true,
+                is_overlay: true,
+                ..Default::default()
+            },
         );
 
         #[allow(unused_mut)]
@@ -639,25 +643,26 @@ fn create_swapchain(
     device: Arc<Device>,
     surface: Arc<Surface>,
 ) -> (Arc<Swapchain>, Vec<Arc<Image>>) {
-    let (capabilities, formats, present_modes) = (
-        device
-            .physical_device()
-            .surface_capabilities(surface.as_ref(), Default::default())
-            .unwrap(),
-        device
-            .physical_device()
-            .surface_formats(surface.as_ref(), Default::default())
-            .unwrap(),
-        device
-            .physical_device()
-            .surface_present_modes(surface.as_ref(), SurfaceInfo::default())
-            .unwrap(),
-    );
+
+    let capabilities = device
+        .physical_device()
+        .surface_capabilities(surface.as_ref(), Default::default())
+        .unwrap();
+
+    let formats = device
+        .physical_device()
+        .surface_formats(surface.as_ref(), Default::default())
+        .unwrap();
+
+    let present_modes = device
+        .physical_device()
+        .surface_present_modes(surface.as_ref(), SurfaceInfo::default())
+        .unwrap();
 
     let surface_format = formats
         .iter()
         .find(|(format, color_space)| {
-            *format == Format::R8G8B8A8_UNORM && *color_space == ColorSpace::SrgbNonLinear
+            *format == Format::R8G8B8A8_SRGB && *color_space == ColorSpace::SrgbNonLinear
         })
         .unwrap_or(formats.first().unwrap());
 
