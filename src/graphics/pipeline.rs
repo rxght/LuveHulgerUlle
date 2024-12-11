@@ -1,3 +1,4 @@
+use egui_winit_vulkano::egui::ahash;
 use smallvec::smallvec;
 use std::{collections::HashSet, sync::Arc};
 use vulkano::{
@@ -42,6 +43,7 @@ pub struct PipelineBuilder {
     pub discard_rectangle_state: DiscardRectangleState,
     pub multisample_state: MultisampleState,
     pub tessellation_state: Option<TessellationState>,
+    pub dynamic_state: HashSet<DynamicState, ahash::RandomState>,
 
     descriptor_set_layouts: Vec<Option<Arc<DescriptorSetLayout>>>,
     pub push_constant_ranges: Vec<PushConstantRange>,
@@ -90,6 +92,7 @@ impl PipelineBuilder {
 
             descriptor_set_layouts: Vec::new(),
             push_constant_ranges: Vec::new(),
+            dynamic_state: HashSet::from_iter([DynamicState::Viewport]),
         }
     }
 
@@ -163,7 +166,7 @@ impl PipelineBuilder {
                 multisample_state: Some(self.multisample_state),
                 depth_stencil_state: Some(self.depth_stencil_state),
                 color_blend_state: Some(self.color_blend_state),
-                dynamic_state: HashSet::from_iter([DynamicState::Viewport]),
+                dynamic_state: self.dynamic_state,
                 subpass: Some(PipelineSubpassType::BeginRenderPass(self.subpass)),
                 base_pipeline: None,
                 discard_rectangle_state: None,

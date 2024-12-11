@@ -7,7 +7,6 @@ use super::pipeline::PipelineBuilder;
 pub struct DrawableSharedPart {
     pub bindables: Vec<Arc<dyn Bindable>>,
     pub pipeline: Arc<GraphicsPipeline>,
-    pub layout: Arc<PipelineLayout>,
 }
 
 pub struct Drawable {
@@ -48,12 +47,11 @@ impl Drawable {
                     bindable.bind_to_pipeline(&mut pipeline_builder);
                 }
 
-                let (pipeline, layout) = pipeline_builder.build(gfx.get_device());
+                let (pipeline, _) = pipeline_builder.build(gfx.get_device());
 
                 let shared_part = Arc::new(DrawableSharedPart {
                     bindables: shared_bindables,
                     pipeline: pipeline,
-                    layout: layout,
                 });
 
                 gfx.cache_drawable_shared_part(caller_location, shared_part.clone());

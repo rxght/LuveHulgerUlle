@@ -17,6 +17,7 @@ use std::time::Duration;
 
 mod character;
 mod hud;
+mod window;
 
 pub struct App {
     tile_map_loader: TileMapLoader,
@@ -25,9 +26,9 @@ pub struct App {
     camera: Camera,
     hotbar: Hotbar,
     healthbar: Healthbar,
-
     health_level: u32,
     hotbar_slot: u32,
+    window: window::Window,
 }
 
 impl App {
@@ -46,13 +47,10 @@ impl App {
             camera,
             hotbar: Hotbar::new(gfx),
             healthbar: Healthbar::new(gfx),
+            window: window::Window::new(gfx, [10, 8], 4.0),
             health_level: 20,
             hotbar_slot: 1,
         }
-    }
-
-    pub fn resize_callback(&self, gfx: &mut Graphics) {
-        gfx.recreate_swapchain();
     }
 
     pub fn run(&mut self, gfx: &mut Graphics, input: &Input, delta_time: Duration) {
@@ -60,10 +58,27 @@ impl App {
         self.camera.position = *self.player.position();
         self.editor_camera_movement(input);
         self.tile_map_loader.update();
+        self.debug_window(gfx, delta_time);
+        self.tile_map.draw(gfx);
+        self.player.draw(gfx);
+        self.hotbar.draw(gfx, self.hotbar_slot - 1, 4.0);
+        self.healthbar.draw(gfx, self.health_level, 4.0);
+        self.window.draw(gfx);
+    }
 
+    fn editor_camera_movement(&mut self, input: &Input) {
+        if input.keyboard.is_key_pressed(12) {
+            self.camera.zoom = (self.camera.zoom + 1.0).round();
+        }
+        if self.camera.zoom > 1.5 && input.keyboard.is_key_pressed(53) {
+            self.camera.zoom = (self.camera.zoom - 1.0).round();
+        }
+        self.camera.update_buffer();
+    }
+
+    fn debug_window(&mut self, gfx: &mut Graphics, delta_time: Duration) {
         let ctx = gfx.gui().context();
-
-        Window::new("Performance")
+        Window::new("Debug Window")
             .resizable(false)
             .frame(
                 Frame::none()
@@ -80,23 +95,8 @@ impl App {
                 let frame_time = delta_time.as_secs_f64();
                 ui.label(format!("frame time: {:.1} ms", frame_time * 1000.0));
                 ui.label(format!("fps: {:.0}", 1.0 / frame_time));
-                ui.add(Slider::new(&mut self.health_level, 0..=20).text("Health: "));
-                ui.add(Slider::new(&mut self.hotbar_slot, 1..=9).text("Hotbar slot: "));
+                ui.add(Slider::new(&mut self.health_level, 0..=20).text("health"));
+                ui.add(Slider::new(&mut self.hotbar_slot, 1..=9).text("hotbar slot"));
             });
-        
-        self.tile_map.draw(gfx);
-        self.player.draw(gfx);
-        self.hotbar.draw(gfx, self.hotbar_slot - 1, 4.0);
-        self.healthbar.draw(gfx, self.health_level, 4.0);
-    }
-
-    fn editor_camera_movement(&mut self, input: &Input) {
-        if input.keyboard.is_key_pressed(12) {
-            self.camera.zoom = (self.camera.zoom + 1.0).round();
-        }
-        if self.camera.zoom > 1.5 && input.keyboard.is_key_pressed(53) {
-            self.camera.zoom = (self.camera.zoom - 1.0).round();
-        }
-        self.camera.update_buffer();
     }
 }

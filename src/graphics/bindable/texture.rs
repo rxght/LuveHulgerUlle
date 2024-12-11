@@ -342,6 +342,7 @@ impl TextureBinding {
     pub fn set_texture(&self, texture: Arc<Texture>) {
         unsafe { *self.texture_ref.get() = texture };
     }
+
     pub fn get_texture(&self) -> Arc<Texture> {
         unsafe { &*self.texture_ref.get() }.clone()
     }

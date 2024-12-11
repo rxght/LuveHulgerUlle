@@ -471,10 +471,6 @@ impl Graphics {
         self.utils.get().unwrap()
     }
 
-    pub fn get_surface(&self) -> Arc<Surface> {
-        self.surface.clone()
-    }
-
     pub fn gui(&mut self) -> &mut Gui {
         &mut self.gui_system
     }

@@ -1,3 +1,4 @@
+#![allow(unused_imports)]
 use std::sync::Arc;
 
 use vulkano::{
@@ -12,17 +13,18 @@ use vulkano::{
 use super::{pipeline::PipelineBuilder, Graphics};
 
 mod buffer;
-mod god_bindable;
 mod push_constant;
 mod shader;
 mod texture;
 mod uniform;
+mod viewport;
 
 pub use buffer::*;
 pub use push_constant::*;
 pub use shader::*;
 pub use texture::*;
 pub use uniform::*;
+pub use viewport::*;
 
 type CommandBufferBuilder = AutoCommandBufferBuilder<
     PrimaryAutoCommandBuffer<Arc<StandardCommandBufferAllocator>>,

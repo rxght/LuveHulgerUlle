@@ -4,8 +4,6 @@ use winit::event::{ElementState, Event, WindowEvent};
 
 use super::ButtonState;
 
-const KEY_COUNT: usize = 128;
-
 pub struct Keyboard {
     key_map: RwLock<HashMap<u32, ButtonState>>,
 }
