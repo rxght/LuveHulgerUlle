@@ -201,7 +201,7 @@ impl Graphics {
             queues.graphics_queue.clone().unwrap(),
             Subpass::from(main_render_pass.clone(), 1).unwrap(),
             swapchain.image_format(),
-            GuiConfig{
+            GuiConfig {
                 allow_srgb_render_target: true,
                 is_overlay: true,
                 ..Default::default()
@@ -314,7 +314,7 @@ impl Graphics {
                 },
             )
             .unwrap()
-            .set_viewport(0, smallvec![viewport.clone()])
+            .set_viewport(0, smallvec![viewport])
             .unwrap();
 
         for drawable in self.draw_queue.iter() {
@@ -370,6 +370,10 @@ impl Graphics {
     }
 
     pub fn draw_frame(&mut self) {
+        if self.is_swapchain_bad() {
+            self.recreate_swapchain();
+        }
+
         let future = &self.futures[self.inflight_index as usize];
         future.wait(None).unwrap();
 
@@ -415,36 +419,15 @@ impl Graphics {
         self.draw_queue.push(drawable);
     }
 
-    pub fn handle_resize(&mut self) {
-        self.recreate_swapchain();
-    }
-
     pub fn recreate_swapchain(&mut self) {
         let capabilities = self
             .device
             .physical_device()
-            .surface_capabilities(self.surface.as_ref(), Default::default())
+            .surface_capabilities(&self.surface, SurfaceInfo::default())
             .unwrap();
 
-        let extent: [u32; 2] = match capabilities.current_extent {
-            Some(current) => current,
-            None => {
-                let window: &Window = self.surface.object().unwrap().downcast_ref().unwrap();
-                let framebuffer_extent = window.inner_size();
-                let width = framebuffer_extent.width;
-                let height = framebuffer_extent.height;
-                [
-                    width.clamp(
-                        capabilities.min_image_extent[0],
-                        capabilities.max_image_extent[0],
-                    ),
-                    height.clamp(
-                        capabilities.min_image_extent[1],
-                        capabilities.max_image_extent[1],
-                    ),
-                ]
-            }
-        };
+        let extent: [u32; 2] = self.window.inner_size().into();
+        let extent = extent.clamp(capabilities.min_image_extent, capabilities.max_image_extent);
 
         let create_info = SwapchainCreateInfo {
             image_extent: extent,
@@ -460,7 +443,7 @@ impl Graphics {
 
         let (depth_buffers, _) = create_depth_buffers(
             self.device.clone(),
-            self.swapchain.clone(),
+            swapchain.clone(),
             self.allocator.clone(),
         );
 
@@ -494,6 +477,15 @@ impl Graphics {
 
     pub fn gui(&mut self) -> &mut Gui {
         &mut self.gui_system
+    }
+
+    fn is_swapchain_bad(&self) -> bool {
+        let window_size: [u32; 2] = self.window.inner_size().into();
+        println!("window_size: {window_size:?}");
+        if self.swapchain.image_extent() != window_size {
+            return true;
+        }
+        return false;
     }
 }
 
@@ -643,7 +635,6 @@ fn create_swapchain(
     device: Arc<Device>,
     surface: Arc<Surface>,
 ) -> (Arc<Swapchain>, Vec<Arc<Image>>) {
-
     let capabilities = device
         .physical_device()
         .surface_capabilities(surface.as_ref(), Default::default())

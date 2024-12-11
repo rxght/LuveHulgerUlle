@@ -2,9 +2,10 @@
 use app::App;
 use graphics::Graphics;
 use winit::{
+    dpi::PhysicalSize,
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
-    window::Window,
+    window::WindowBuilder,
 };
 
 mod app;
@@ -14,7 +15,11 @@ mod input;
 
 fn main() {
     let event_loop = EventLoop::new();
-    let window = Window::new(&event_loop).unwrap();
+    let window = WindowBuilder::new()
+        .with_inner_size(PhysicalSize::new(1200, 800))
+        .with_resizable(true)
+        .build(&event_loop)
+        .unwrap();
 
     let mut gfx = Graphics::new(window, &event_loop);
 
