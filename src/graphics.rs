@@ -477,7 +477,6 @@ impl Graphics {
 
     fn is_swapchain_bad(&self) -> bool {
         let window_size: [u32; 2] = self.window.inner_size().into();
-        println!("window_size: {window_size:?}");
         if self.swapchain.image_extent() != window_size {
             return true;
         }
