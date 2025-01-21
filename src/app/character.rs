@@ -163,14 +163,19 @@ impl CharacterController {
             movement_amount = delta_time.as_secs_f32() * movement_speed;
         }
 
-        self.position = [
-            self.position[0] + x_movement as f32 * movement_amount,
-            self.position[1] + y_movement as f32 * movement_amount,
-        ];
+        let [x_pos, y_pos] = &mut self.position;
+
+        *x_pos += x_movement as f32 * movement_amount;
+        *y_pos += y_movement as f32 * movement_amount;
+
+        let [width, height] = self.tile_renderer.dimensions();
 
         self.tile_renderer.object_data().access_data(|data| {
             data.layer_idx = frame_idx as f32;
-            data.position = self.position;
+            data.position = [
+                *x_pos - width * 0.5,
+                *y_pos + height * 0.2,
+            ];
         });
 
         self.tile_renderer

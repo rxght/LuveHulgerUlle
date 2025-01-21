@@ -1,0 +1,6 @@
+<?xml version="1.1" encoding="UTF-8"?>
+<Items>
+    <Item name="Test Item 1" source="..\textures\ui\hud\heart.png" rarity="3" stack_size="999" />
+    <Item name="Test Item 2" source="..\textures\ui\hud\halfheart.png" rarity="1" stack_size="999" />
+    <Item name="Test Item 3" source="..\textures\ui\hud\heartcontainer.png" rarity="4" stack_size="999" />
+</Items>

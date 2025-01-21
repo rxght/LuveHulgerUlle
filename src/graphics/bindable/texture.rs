@@ -84,7 +84,10 @@ impl Texture {
     }
 
     pub fn new_array(gfx: &Graphics, path: &str, layer_dimensions: [u32; 2]) -> Arc<Texture> {
-        let source_file = std::fs::File::open(path).unwrap();
+        let source_file = match std::fs::File::open(path) {
+            Ok(v) => v,
+            Err(e) => panic!("{e}\npath: {path}"),
+        };
 
         let mut decoder = png::Decoder::new(source_file);
         let image_info = decoder.read_header_info().unwrap();

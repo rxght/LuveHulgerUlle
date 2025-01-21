@@ -6,12 +6,12 @@ use std::{
 };
 
 fn main() {
+    println!("cargo:rerun-if-changed=");
     compile_shaders();
     generate_shader_modules();
 }
 
 fn compile_shaders() {
-    println!("cargo:rerun-if-changed=*");
     let out_folder: &Path = Path::new("./shaders/");
     let source_folder: &Path = Path::new("./shaders/src/");
 

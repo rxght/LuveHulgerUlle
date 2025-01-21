@@ -9,7 +9,7 @@ use crate::graphics::{
     camera::Camera,
     drawable::Drawable,
     shaders::{
-        frag_texture_2DArray,
+        frag_texture_array,
         vert_tile::{self, FrameData},
     },
     Graphics,
@@ -273,7 +273,7 @@ impl TileMapLoader {
                 vec![
                     bindable::VertexShader::from_module(vert_tile::load(gfx.get_device()).unwrap()),
                     bindable::FragmentShader::from_module(
-                        frag_texture_2DArray::load(gfx.get_device()).unwrap(),
+                        frag_texture_array::load(gfx.get_device()).unwrap(),
                     ),
                     bindable::UniformBufferBinding::new(
                         gfx.utils().cartesian_to_normalized().clone(),

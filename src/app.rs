@@ -17,6 +17,7 @@ use std::time::Duration;
 
 mod character;
 mod hud;
+mod item;
 mod window;
 
 pub struct App {
@@ -28,7 +29,6 @@ pub struct App {
     healthbar: Healthbar,
     health_level: u32,
     hotbar_slot: u32,
-    window: window::Window,
 }
 
 impl App {
@@ -47,7 +47,6 @@ impl App {
             camera,
             hotbar: Hotbar::new(gfx),
             healthbar: Healthbar::new(gfx),
-            window: window::Window::new(gfx, [10, 8], 4.0),
             health_level: 20,
             hotbar_slot: 1,
         }
@@ -63,7 +62,6 @@ impl App {
         self.player.draw(gfx);
         self.hotbar.draw(gfx, self.hotbar_slot - 1, 4.0);
         self.healthbar.draw(gfx, self.health_level, 4.0);
-        self.window.draw(gfx);
     }
 
     fn editor_camera_movement(&mut self, input: &Input) {

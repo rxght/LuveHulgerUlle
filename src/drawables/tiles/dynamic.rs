@@ -8,7 +8,7 @@ use crate::graphics::{
     bindable::{self, PushConstant, Texture, TextureBinding},
     camera::Camera,
     drawable::Drawable,
-    shaders::{frag_texture_2DArray, vert_tile2},
+    shaders::{frag_texture_array, vert_tile2},
     Graphics,
 };
 
@@ -60,7 +60,7 @@ impl DynamicTile {
                         vert_tile2::load(gfx.get_device()).unwrap(),
                     ),
                     bindable::FragmentShader::from_module(
-                        frag_texture_2DArray::load(gfx.get_device()).unwrap(),
+                        frag_texture_array::load(gfx.get_device()).unwrap(),
                     ),
                     bindable::UniformBufferBinding::new(
                         gfx.utils().cartesian_to_normalized().clone(),
@@ -100,6 +100,14 @@ impl DynamicTile {
         self.object_data.access_data(|data| {
             data.layer_idx = layer as f32;
         });
+    }
+
+    pub fn dimensions(&self) -> [f32; 2] {
+        let mut dimensions = [0.0, 0.0];
+        self.object_data.access_data(|data| {
+            dimensions = data.dimensions;
+        });
+        return dimensions;
     }
 
     pub fn object_data(&self) -> &PushConstant<vert_tile2::ObjectData> {
