@@ -172,10 +172,7 @@ impl CharacterController {
 
         self.tile_renderer.object_data().access_data(|data| {
             data.layer_idx = frame_idx as f32;
-            data.position = [
-                *x_pos - width * 0.5,
-                *y_pos + height * 0.2,
-            ];
+            data.position = [*x_pos - width * 0.5, *y_pos + height * 0.2];
         });
 
         self.tile_renderer
