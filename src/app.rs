@@ -57,7 +57,7 @@ impl App {
         self.editor_camera_movement(input);
         //self.tile_map_loader.update();
         self.debug_window(gfx, delta_time);
-        self.tile_map.draw(gfx);
+        self.tile_map.draw_all_layers(gfx);
         self.player.draw(gfx);
         self.hotbar.draw(gfx, self.hotbar_slot - 1, 4.0);
         self.healthbar.draw(gfx, self.health_level, 4.0);
