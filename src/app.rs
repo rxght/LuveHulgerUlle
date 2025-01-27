@@ -12,7 +12,6 @@ use egui_winit_vulkano::egui::Stroke;
 use egui_winit_vulkano::egui::Window;
 use hud::Healthbar;
 use hud::Hotbar;
-use std::sync::Arc;
 use std::time::Duration;
 
 mod character;
@@ -22,7 +21,7 @@ mod window;
 
 pub struct App {
     tile_map_loader: TileMapLoader,
-    tile_map: Arc<TileMap>,
+    tile_map: TileMap,
     player: CharacterController,
     camera: Camera,
     hotbar: Hotbar,
@@ -36,7 +35,7 @@ impl App {
         let camera = Camera::new(gfx, [0.0, 0.0], 1.0, 0.0);
 
         let mut loader = TileMapLoader::new();
-        let tile_map = loader.load(gfx, "assets/tilemaps/ollemap.tmx", &camera);
+        let tile_map = loader.load(gfx, "assets/tilemaps/ollemap.tmx", &camera).unwrap();
 
         let player = CharacterController::new(gfx, &camera);
 
@@ -56,7 +55,7 @@ impl App {
         self.player.update(input, delta_time);
         self.camera.position = *self.player.position();
         self.editor_camera_movement(input);
-        self.tile_map_loader.update();
+        //self.tile_map_loader.update();
         self.debug_window(gfx, delta_time);
         self.tile_map.draw(gfx);
         self.player.draw(gfx);

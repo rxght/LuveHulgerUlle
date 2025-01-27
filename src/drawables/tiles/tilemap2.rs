@@ -8,19 +8,23 @@ use std::{
 };
 
 use tiled::FiniteTileLayer;
-use vulkano::{image::sampler::Filter, pipeline::graphics::vertex_input::Vertex, shader::ShaderStages};
+use vulkano::{
+    pipeline::graphics::vertex_input::Vertex, shader::ShaderStages,
+};
 
 use crate::graphics::{
-    bindable::{self, IndexBuffer, PushConstant, Texture, VertexBuffer}, camera::Camera, drawable::Drawable, shaders::{frag_texture_array, vert_tile}, Graphics
+    bindable::{PushConstant, Texture, TextureBinding},
+    camera::Camera,
+    drawable::Drawable,
+    shaders::{frag_texture_array, vert_tile2},
+    Graphics,
 };
 
 #[derive(Vertex, bytemuck::Pod, Clone, Copy, bytemuck::Zeroable)]
 #[repr(C)]
 struct VertexT {
-    #[format(R32G32B32_SFLOAT)]
-    pos: [f32; 3],
-    #[format(R32G32B32_SFLOAT)]
-    uv: [f32; 3],
+    #[format(R32G32_SFLOAT)]
+    pos: [f32; 2],
 }
 
 struct Mesh {
@@ -39,8 +43,10 @@ pub struct Tile {
     animation: Option<Arc<TileAnimation>>,
     tile_set: Arc<TileSet>,
     tile_id: u32,
-    layer_idx: u32,
     position: [u32; 2],
+    drawable: Arc<Drawable>,
+    object_data: Arc<PushConstant<vert_tile2::ObjectData>>,
+    texture_binding: Arc<TextureBinding>,
 }
 
 struct TileMapLayer {
@@ -51,21 +57,22 @@ pub struct TileMap {
     layers: Vec<TileMapLayer>,
     tile_dimensions: [u32; 2],
     map_dimensions: [u32; 2],
-    drawables: Vec<TileMapDrawable>,
 }
 
-pub struct TileMapDrawable {
-    tile_set: Arc<TileSet>,
-    vertex_buffer: Arc<VertexBuffer<VertexT>>,
-    index_buffer: Arc<IndexBuffer>,
-    drawable: Arc<Drawable>,
+impl TileMap {
+    pub fn draw(&self, gfx: &mut Graphics) {
+        for layer in &self.layers {
+            for tile in &layer.tiles {
+                gfx.queue_drawable(tile.drawable.clone());
+            }
+        }
+    }
 }
 
 #[derive(Clone)]
 pub struct TileSet {
     texture: Arc<Texture>,
     tile_dimensions: [u32; 2],
-    atlas_dimensions: [u32; 2],
     tile_count: u32,
 }
 
@@ -73,7 +80,6 @@ impl PartialEq for TileSet {
     fn eq(&self, other: &Self) -> bool {
         self.texture.image_view() == other.texture.image_view()
             && self.tile_dimensions == other.tile_dimensions
-            && self.atlas_dimensions == other.atlas_dimensions
             && self.tile_count == other.tile_count
     }
 }
@@ -84,23 +90,20 @@ impl Hash for TileSet {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.texture.image_view().hash(state);
         self.tile_dimensions.hash(state);
-        self.atlas_dimensions.hash(state);
         self.tile_count.hash(state);
     }
 }
 
 impl TileSet {
-    pub fn new(gfx: &mut Graphics, set: &tiled::Tileset) -> Self {
-        let atlas_texture = Texture::new(gfx, set.source.to_str().unwrap(), Filter::Nearest);
-        let atlas_dimensions = atlas_texture.extent_2d();
+    fn new(gfx: &mut Graphics, set: &tiled::Tileset) -> Self {
+        let tile_dimensions = [set.tile_width, set.tile_height];
+
+        let image_path = set.image.as_ref().unwrap().source.to_str().unwrap();
+        let atlas_texture = Texture::new_array(gfx, image_path, tile_dimensions);
 
         TileSet {
             texture: atlas_texture.clone(),
-            tile_dimensions: [set.tile_width, set.tile_height],
-            atlas_dimensions: [
-                atlas_dimensions[0] / set.tile_width,
-                atlas_dimensions[1] / set.tile_height,
-            ],
+            tile_dimensions,
             tile_count: set.tilecount,
         }
     }
@@ -121,10 +124,11 @@ impl TileMapLoader {
         }
     }
 
-    pub fn load_tilemap(
+    pub fn load(
         &mut self,
         gfx: &mut Graphics,
         path: impl AsRef<Path>,
+        camera: &Camera,
     ) -> Result<TileMap, Box<dyn Error>> {
         let mut loader = tiled::Loader::new();
         let map = loader.load_tmx_map(path.as_ref())?;
@@ -132,11 +136,10 @@ impl TileMapLoader {
         let map_dimensions = [map.width, map.height];
         let tile_dimensions = [map.tile_width, map.tile_height];
 
-        let layers = self.load_layers(gfx, map);
+        let layers = self.load_layers(gfx, map, camera);
 
         let parsed_map = TileMap {
             layers: layers,
-            drawables: vec![],
             tile_dimensions,
             map_dimensions,
         };
@@ -144,14 +147,19 @@ impl TileMapLoader {
         Ok(parsed_map)
     }
 
-    fn load_layers(&mut self, gfx: &mut Graphics, map: tiled::Map) -> Vec<TileMapLayer> {
+    fn load_layers(
+        &mut self,
+        gfx: &mut Graphics,
+        map: tiled::Map,
+        camera: &Camera,
+    ) -> Vec<TileMapLayer> {
         let mut result = Vec::new();
-        for (layer_idx, layer) in map.layers().enumerate() {
+        for layer in map.layers() {
             use tiled::LayerType;
             use tiled::TileLayer;
             match layer.layer_type() {
                 LayerType::Tiles(TileLayer::Finite(tile_layer)) => {
-                    let parsed_layer = self.load_tile_layer(gfx, layer_idx as u32, tile_layer);
+                    let parsed_layer = self.load_tile_layer(gfx, tile_layer, camera);
                     result.push(parsed_layer);
                 }
                 LayerType::Tiles(TileLayer::Infinite(_)) => {
@@ -179,8 +187,8 @@ impl TileMapLoader {
     fn load_tile_layer(
         &mut self,
         gfx: &mut Graphics,
-        layer_idx: u32,
         tile_layer: FiniteTileLayer<'_>,
+        camera: &Camera,
     ) -> TileMapLayer {
         let mut parsed_tiles = Vec::new();
         let width = tile_layer.width();
@@ -190,7 +198,7 @@ impl TileMapLoader {
             for x in 0..width {
                 if let Some(tile) = tile_layer.get_tile(x as i32, y as i32) {
                     let tile_set = self.load_tileset(gfx, tile.get_tileset());
-                    if let Some(tile) = self.create_tile([x, y], tile, layer_idx, tile_set) {
+                    if let Some(tile) = self.create_tile(gfx, [x, y], tile, tile_set, camera) {
                         parsed_tiles.push(tile);
                     }
                 }
@@ -201,126 +209,20 @@ impl TileMapLoader {
         }
     }
 
-    fn create_drawables(&self, gfx: &mut Graphics, camera: &Camera, layers: &Vec<TileMapLayer>) -> Vec<TileMapDrawable> {
+    fn create_tile_mesh() -> Mesh {
+        let vertices = vec![
+            VertexT { pos: [0.0, 0.0] },
+            VertexT { pos: [1.0, 0.0] },
+            VertexT { pos: [0.0, 1.0] },
+            VertexT { pos: [1.0, 1.0] },
+        ];
 
-        let mut groups: HashMap<GroupInfo, Vec<&Tile>> = HashMap::new();
+        let indices = vec![0, 1, 2, 2, 1, 3];
 
-        // sort tiles by which set they use and their animation
-        for layer in layers {
-            for tile in &layer.tiles {
-                let group_info = GroupInfo {
-                    tile_set: tile.tile_set.clone(),
-                    animation: tile.animation.clone(),
-                };
-                groups.entry(group_info).or_insert_with(Vec::new).push(tile);
-            }
-        }
-
-        let mut drawables = Vec::<TileMapDrawable>::new();
-
-        // create one drawable per group
-        for (group_info, tiles) in groups {
-            let mesh = self.create_mesh(group_info.tile_set.clone(), tiles);
-            let drawable = self.create_drawable(gfx, camera, group_info, mesh);
-            drawables.push(drawable);
-        }
-
-        drawables
+        Mesh { vertices, indices }
     }
 
-    fn create_mesh(&self, tile_set: Arc<TileSet>, tiles: Vec<&Tile>) -> Mesh {
-        let mut vertices = vec![];
-        let mut indices = vec![];
-
-        for tile in tiles {
-            let [x, y] = tile.position;
-
-            let min_x = x as f32 * tile_set.tile_dimensions[0] as f32;
-            let max_x = (x + 1) as f32 * tile_set.tile_dimensions[0] as f32;
-            let min_y = y as f32 * tile_set.tile_dimensions[1] as f32;
-            let max_y = (y + 1) as f32 * tile_set.tile_dimensions[1] as f32;
-
-            println!("remember to change this!!");
-            let depth = 1.0 - 0.01 * tile.layer_idx as f32;
-
-            let first_vertex_idx = vertices.len() as u32;
-
-            vertices.extend([
-                VertexT {
-                    pos: [min_x, min_y, depth],
-                    uv: [0.0, 0.0, tile.layer_idx as f32],
-                },
-                VertexT {
-                    pos: [max_x, min_y, depth],
-                    uv: [1.0, 0.0, tile.layer_idx as f32],
-                },
-                VertexT {
-                    pos: [min_x, max_y, depth],
-                    uv: [0.0, 1.0, tile.layer_idx as f32],
-                },
-                VertexT {
-                    pos: [max_x, max_y, depth],
-                    uv: [1.0, 1.0, tile.layer_idx as f32],
-                },
-            ]);
-
-            indices.extend([0, 1, 2, 2, 1, 3].into_iter().map(|p| first_vertex_idx + p));
-        }
-
-        Mesh {
-            vertices,
-            indices,
-        }
-    }
-
-    fn create_drawable(&self, gfx: &mut Graphics, camera: &Camera, group_info: GroupInfo, mesh: Mesh) -> TileMapDrawable {
-        
-        let animation = &group_info.animation;
-        let frame_data = FrameData {
-            
-        };
-
-        let push_constants = PushConstant::new(0, frame_data, ShaderStages::VERTEX);
-
-        let index_count = mesh.indices.len() as u32;
-
-        let tile_set = group_info.tile_set;
-        let vertex_buffer = bindable::VertexBuffer::new(gfx, mesh.vertices);
-        let index_buffer: Arc<IndexBuffer> = bindable::IndexBuffer::new(gfx, mesh.indices);
-
-        let drawable = Drawable::new(
-            gfx,
-            vec![
-                bindable::TextureBinding::new(group_info.tile_set.texture.clone(), 1),
-                vertex_buffer.clone(),
-                index_buffer.clone(),
-                push_constants,
-            ],
-            || {
-                vec![
-                    bindable::VertexShader::from_module(vert_tile::load(gfx.get_device()).unwrap()),
-                    bindable::FragmentShader::from_module(
-                        frag_texture_array::load(gfx.get_device()).unwrap(),
-                    ),
-                    bindable::UniformBufferBinding::new(
-                        gfx.utils().cartesian_to_normalized().clone(),
-                        0,
-                    ),
-                    bindable::UniformBufferBinding::new(camera.uniform_buffer(), 2),
-                ]
-            },
-            index_count,
-        );
-
-        TileMapDrawable{
-            tile_set,
-            vertex_buffer,
-            index_buffer,
-            drawable,
-        }
-    }
-
-    pub fn load_tileset(&mut self, gfx: &mut Graphics, set: &tiled::Tileset) -> Arc<TileSet> {
+    fn load_tileset(&mut self, gfx: &mut Graphics, set: &tiled::Tileset) -> Arc<TileSet> {
         let key = set.source.as_os_str();
         if let Some(arc) = self.loaded_tilesets.get(key).and_then(Weak::upgrade) {
             return arc;
@@ -331,24 +233,61 @@ impl TileMapLoader {
         return arc;
     }
 
-    pub fn create_tile(
+    fn create_tile(
         &mut self,
+        gfx: &mut Graphics,
         position: [u32; 2],
         tile: tiled::LayerTile,
-        layer_idx: u32,
         tile_set: Arc<TileSet>,
+        camera: &Camera,
     ) -> Option<Tile> {
         let set_tile = tile.get_tile()?;
         let tile_type = self.get_tile_type(&set_tile);
         let animation = self.get_animation(&set_tile);
+        let tile_id = tile.id() as u32;
+
+        let [width, height] = tile_set.tile_dimensions;
+        let [x, y] = position;
+
+        let object_data = vert_tile2::ObjectData {
+            position: [(x * width) as f32, (y * height) as f32],
+            dimensions: [width as f32, height as f32],
+            layer_idx: tile_id as f32,
+        };
+
+        let object_data = PushConstant::new(0, object_data, ShaderStages::VERTEX);
+
+        let texture_binding = TextureBinding::new(tile_set.texture.clone(), 1);
+
+        use crate::graphics::bindable::*;
+        let drawable = Drawable::new(
+            gfx,
+            vec![object_data.clone(), texture_binding.clone()],
+            || {
+                let mesh = Self::create_tile_mesh();
+                vec![
+                    VertexBuffer::new(gfx, mesh.vertices),
+                    IndexBuffer::new(gfx, mesh.indices),
+                    VertexShader::from_module(vert_tile2::load(gfx.get_device()).unwrap()),
+                    FragmentShader::from_module(
+                        frag_texture_array::load(gfx.get_device()).unwrap(),
+                    ),
+                    UniformBufferBinding::new(gfx.utils().cartesian_to_normalized(), 0),
+                    UniformBufferBinding::new(camera.uniform_buffer(), 2),
+                ]
+            },
+            6,
+        );
 
         Some(Tile {
             tile_type,
             animation,
             tile_set,
-            tile_id: tile.id() as u32,
-            layer_idx,
+            tile_id,
             position,
+            drawable,
+            object_data,
+            texture_binding,
         })
     }
 
@@ -376,7 +315,8 @@ impl TileMapLoader {
         if let Some(arc) = self.animations.get(&parsed_frames).and_then(Weak::upgrade) {
             return Some(arc);
         }
-        let shared_frames: Arc<[AnimationFrame]> = Arc::from(parsed_frames.clone().into_boxed_slice());
+        let shared_frames: Arc<[AnimationFrame]> =
+            Arc::from(parsed_frames.clone().into_boxed_slice());
         let animation = Arc::new(TileAnimation {
             last_frame_time: std::time::Instant::now(),
             current_frame_idx: 0,
