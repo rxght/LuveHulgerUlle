@@ -19,7 +19,7 @@ use vulkano::command_buffer::{
 use vulkano::descriptor_set::allocator::{
     StandardDescriptorSetAllocator, StandardDescriptorSetAllocatorCreateInfo,
 };
-use vulkano::format::{ClearValue, FormatFeatures};
+use vulkano::format::{ClearValue, FormatFeatures, NumericFormat};
 use vulkano::image::sampler::ComponentMapping;
 use vulkano::image::view::ImageViewType;
 use vulkano::image::{Image, ImageCreateInfo, ImageTiling, ImageType};
@@ -626,6 +626,43 @@ fn create_logical_device(
     (device, queues)
 }
 
+fn select_swapchain_format(
+    device: Arc<Device>,
+    surface: Arc<Surface>,
+) -> (Format, ColorSpace) {
+    let formats = device
+        .physical_device()
+        .surface_formats(surface.as_ref(), Default::default())
+        .unwrap();
+
+    let format = formats
+        .iter()
+        .max_by_key(|(format, color_space)| {
+            let mut score = 0;
+            match format.block_size() {
+                4 => score += 3,
+                8 => score += 2,
+                16 => score += 1,
+                _ => {},
+            };
+            if *format == Format::R8G8B8A8_SRGB {
+                score += 100;
+            }
+            if *color_space == ColorSpace::SrgbNonLinear {
+                score += 4;
+            }
+            match format.numeric_format_color() {
+                Some(NumericFormat::SRGB) => score += 2,
+                _ => {},
+            }
+            println!("Format: {:?}, ColorSpace: {:?}, Score: {}", format, color_space, score);
+            score
+        })
+        .unwrap_or(formats.first().unwrap());
+
+    *format
+}
+
 fn create_swapchain(
     device: Arc<Device>,
     surface: Arc<Surface>,
@@ -635,22 +672,12 @@ fn create_swapchain(
         .surface_capabilities(surface.as_ref(), Default::default())
         .unwrap();
 
-    let formats = device
-        .physical_device()
-        .surface_formats(surface.as_ref(), Default::default())
-        .unwrap();
-
     let present_modes = device
         .physical_device()
         .surface_present_modes(surface.as_ref(), SurfaceInfo::default())
         .unwrap();
 
-    let surface_format = formats
-        .iter()
-        .find(|(format, color_space)| {
-            *format == Format::R8G8B8A8_SRGB && *color_space == ColorSpace::SrgbNonLinear
-        })
-        .unwrap_or(formats.first().unwrap());
+    let (surface_format, color_space) = select_swapchain_format(device.clone(), surface.clone());
 
     let extent: [u32; 2] = match capabilities.current_extent {
         Some(current) => current,
@@ -694,8 +721,8 @@ fn create_swapchain(
             Some(max) => min(capabilities.min_image_count + 1, max),
             None => capabilities.min_image_count + 1,
         },
-        image_format: surface_format.0,
-        image_color_space: surface_format.1,
+        image_format: surface_format,
+        image_color_space: color_space,
         image_extent: extent,
         image_array_layers: 1,
         image_usage: ImageUsage::COLOR_ATTACHMENT,

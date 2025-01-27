@@ -202,7 +202,7 @@ impl Texture {
             gfx.get_allocator(),
             ImageCreateInfo {
                 image_type: ImageType::Dim2d,
-                format: gfx.get_swapchain_format(),
+                format: vulkano::format::Format::R8G8B8A8_SRGB,
                 extent,
                 array_layers: array_layers.unwrap_or(1),
                 usage: ImageUsage::SAMPLED | ImageUsage::TRANSFER_DST,
