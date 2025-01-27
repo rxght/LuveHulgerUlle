@@ -3,6 +3,7 @@
  <image source="../textures/olletileset.png" width="144" height="64"/>
  <tile id="0" probability="0.9"/>
  <tile id="9" probability="0.03"/>
+ <tile id="11" type="dirt"/>
  <wangsets>
   <wangset name="Grass" type="corner" tile="-1">
    <wangcolor name="Grass" color="#ff0000" tile="-1" probability="1"/>

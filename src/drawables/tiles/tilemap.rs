@@ -36,15 +36,28 @@ impl TileAnimation {
     }
 }
 
+struct TileGroup {
+    pub tiles: Vec<Tile>,
+    pub drawable: Arc<Drawable>,
+}
+
+#[derive(Clone)]
+pub struct Tile {
+    position: [u32; 2],
+    texture_id: u32,
+    type_str: Option<Arc<str>>,
+}
+
 pub struct TileMap {
-    pub layers: Vec<Arc<Drawable>>,
+    // draw times are much faster because the tiles are grouped together (90% sure this is true)
+    groups: Vec<TileGroup>,
 }
 
 impl TileMap {
     pub fn draw(&self, gfx: &mut Graphics) {
-        self.layers
+        self.groups
             .iter()
-            .for_each(|drawable| gfx.queue_drawable(drawable.clone()));
+            .for_each(|group| gfx.queue_drawable(group.drawable.clone()));
     }
 }
 
@@ -91,15 +104,15 @@ impl TileMapLoader {
         let height = map.height;
 
         #[derive(Default)]
-        struct TileGroup {
-            tiles: Vec<[u32; 3]>,
+        struct TileGroupData {
+            tiles: Vec<Tile>,
             animations: HashMap<TileId, AnimationDesc>,
         }
 
         let mut final_layers = Vec::new();
 
         for layer in map.layers() {
-            let mut groups: HashMap<&str, TileGroup> = HashMap::new();
+            let mut groups: HashMap<&str, TileGroupData> = HashMap::new();
 
             let layer = match layer.as_tile_layer() {
                 Some(v) => v,
@@ -140,30 +153,35 @@ impl TileMapLoader {
                         }
                     }
 
-                    group.tiles.push([x as u32, y as u32, tile.id()]);
+                    group.tiles.push(Tile {
+                        position: [x as u32, y as u32],
+                        texture_id: tile.id() as u32,
+                        type_str: None,
+                    });
                 }
             }
 
             for (texture_path, group) in groups.into_iter() {
                 let texture = Texture::new_array(gfx, texture_path, [16, 16]);
 
-                let mut animated_groups: HashMap<&AnimationDesc, Vec<[u32; 3]>> = HashMap::new();
+                let mut animated_groups: HashMap<&AnimationDesc, Vec<Tile>> = HashMap::new();
 
                 let mut vertices = Vec::new();
                 let mut indices = Vec::new();
 
-                for tile in group.tiles {
-                    let tile_id = tile[2];
-
-                    match group.animations.get(&tile_id) {
-                        Some(animation) => animated_groups.entry(animation).or_default().push(tile),
+                for tile in &group.tiles {
+                    match group.animations.get(&tile.texture_id) {
+                        Some(animation) => animated_groups
+                            .entry(animation)
+                            .or_default()
+                            .push(tile.clone()),
                         None => {
                             Self::add_tile_to_mesh(&mut vertices, &mut indices, tile, tile_scale)
                         }
                     }
                 }
 
-                if let Some(entry) = Self::create_drawable(
+                if let Some(drawable) = Self::create_drawable(
                     gfx,
                     vertices,
                     indices,
@@ -171,14 +189,18 @@ impl TileMapLoader {
                     camera,
                     self.no_frame_offset_buffer.clone(),
                 ) {
-                    final_layers.push(entry);
+                    let layer = TileGroup {
+                        drawable,
+                        tiles: group.tiles,
+                    };
+                    final_layers.push(layer);
                 }
 
                 for (animation, tiles) in animated_groups {
                     let mut vertices = Vec::new();
                     let mut indices = Vec::new();
 
-                    for tile in tiles {
+                    for tile in &tiles {
                         Self::add_tile_to_mesh(&mut vertices, &mut indices, tile, tile_scale);
                     }
 
@@ -191,7 +213,7 @@ impl TileMapLoader {
                         }
                     };
 
-                    if let Some(entry) = Self::create_drawable(
+                    if let Some(drawable) = Self::create_drawable(
                         gfx,
                         vertices,
                         indices,
@@ -199,26 +221,26 @@ impl TileMapLoader {
                         camera,
                         animation_state.buffer.clone(),
                     ) {
-                        final_layers.push(entry);
+                        let layer = TileGroup { drawable, tiles };
+                        final_layers.push(layer);
                     }
                 }
             }
         }
 
         Arc::new(TileMap {
-            layers: final_layers,
+            groups: final_layers,
         })
     }
 
     fn add_tile_to_mesh(
         vertices: &mut Vec<VertexT>,
         indices: &mut Vec<u32>,
-        tile_info: [u32; 3],
+        tile_info: &Tile,
         tile_scale: f32,
     ) {
-        let x = tile_info[0];
-        let y = tile_info[1];
-        let uv_layer = tile_info[2] as f32;
+        let [x, y] = tile_info.position;
+        let uv_layer = tile_info.texture_id as f32;
 
         let min_x = x as f32 * tile_scale;
         let max_x = (x + 1) as f32 * tile_scale;
