@@ -53,6 +53,12 @@ struct TileMapLayer {
     tiles: Vec<Tile>,
 }
 
+impl TileMapLayer {
+    pub fn draw(&self, gfx: &mut Graphics) {
+        self.tiles.iter().for_each(|tile| gfx.queue_drawable(tile.drawable.clone()));
+    }
+}
+
 pub struct TileMap {
     layers: Vec<TileMapLayer>,
     tile_dimensions: [u32; 2],
@@ -60,12 +66,8 @@ pub struct TileMap {
 }
 
 impl TileMap {
-    pub fn draw(&self, gfx: &mut Graphics) {
-        for layer in &self.layers {
-            for tile in &layer.tiles {
-                gfx.queue_drawable(tile.drawable.clone());
-            }
-        }
+    pub fn draw_all_layers(&self, gfx: &mut Graphics) {
+        self.layers.iter().for_each(|layer| layer.draw(gfx));
     }
 }
 
@@ -250,7 +252,7 @@ impl TileMapLoader {
         let [x, y] = position;
 
         let object_data = vert_tile2::ObjectData {
-            position: [(x * width) as f32, (y * height) as f32],
+            position: [(x * width) as f32, -1.0 * (y * height) as f32],
             dimensions: [width as f32, height as f32],
             layer_idx: tile_id as f32,
         };
