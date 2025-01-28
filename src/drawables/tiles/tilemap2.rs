@@ -8,15 +8,12 @@ use std::{
 };
 
 use tiled::FiniteTileLayer;
-use vulkano::{
-    pipeline::graphics::vertex_input::Vertex, shader::ShaderStages,
-};
+use vulkano::pipeline::graphics::vertex_input::Vertex;
 
 use crate::graphics::{
-    bindable::{PushConstant, Texture, TextureBinding},
+    bindable::Texture,
     camera::Camera,
     drawable::Drawable,
-    shaders::{frag_texture_array, vert_tile2},
     Graphics,
 };
 
@@ -33,55 +30,11 @@ struct Mesh {
 }
 
 pub struct Tile {
-    tile_type: Option<Arc<str>>,
-    animation: Option<Arc<TileAnimation>>,
-    tile_set: Arc<TileSet>,
-    tile_id: u32,
-    drawable: Arc<Drawable>,
-    object_data: Arc<PushConstant<vert_tile2::ObjectData>>,
-    texture_binding: Arc<TextureBinding>,
-}
-
-impl std::fmt::Debug for Tile {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.tile_type {
-            Some(tile_type) => f.write_fmt(format_args!("Tile: {}", tile_type)),
-            None => f.write_fmt(format_args!("Tile: {}", self.tile_id))
-        }
-        
-    }
-}
-
-impl Tile {
-    pub fn draw(&self, gfx: &mut Graphics) {
-        gfx.queue_drawable(self.drawable.clone());
-    }
-
-    pub fn set_tile_id(&mut self, tile_id: u32) {
-        self.tile_id = tile_id;
-        self.object_data.access_data(|data| data.layer_idx = tile_id as f32);
-    }
-
-    pub fn set_tile_position(&mut self, position: [u32; 2]) {
-        let [width, height] = self.tile_set.tile_dimensions;
-        let [x, y] = position;
-        self.object_data.access_data(|data| {
-            data.position = [(x * width) as f32, -1.0 * (y * height) as f32];
-        });
-    }
-    
-    pub fn set_tile_set(&mut self, tile_set: Arc<TileSet>) {
-        self.tile_set = tile_set;
-        self.texture_binding.set_texture(self.tile_set.texture.clone());
-        let [width, height] = self.tile_set.tile_dimensions;
-        self.object_data.access_data(|data| {
-            data.dimensions = [width as f32, height as f32];
-        });
-    }
-
-    pub fn set_animation(&mut self, animation: Option<Arc<TileAnimation>>) {
-        self.animation = animation;
-    }
+    pub tile_type: Option<Arc<str>>,
+    pub animation: Option<Arc<TileAnimation>>,
+    pub position: [f32; 2],
+    pub tile_set: Arc<TileSet>,
+    pub tile_id: u32,
 }
 
 pub struct TileMapLayer {
@@ -92,10 +45,6 @@ impl TileMapLayer {
     pub fn new(tiles: Vec<Tile>) -> Self {
         Self { tiles }
     }
-
-    pub fn draw(&self, gfx: &mut Graphics) {
-        self.tiles.iter().for_each(|tile| tile.draw(gfx));
-    }
 }
 
 pub struct TileMap {
@@ -104,11 +53,13 @@ pub struct TileMap {
     layers: Vec<TileMapLayer>,
     tile_dimensions: [u32; 2],
     map_dimensions: [u32; 2],
+
+    drawable: TileMapDrawable,
 }
 
 impl TileMap {
-    pub fn draw_all_layers(&self, gfx: &mut Graphics) {
-        self.layers.iter().for_each(|layer| layer.draw(gfx));
+    pub fn draw(&self, gfx: &mut Graphics) {
+        self.drawable.draw(gfx);
     }
 
     pub fn dimensions(&self) -> [u32; 2] {
@@ -209,7 +160,9 @@ impl TileMapLoader {
         let map_dimensions = [map.width, map.height];
         let tile_dimensions = [map.tile_width, map.tile_height];
 
-        let layers = self.load_layers(gfx, map, position, scale, camera);
+        let layers = self.load_layers(gfx, map, position);
+
+        let drawable = TileMapDrawable::new(gfx, position, scale, &layers, tile_dimensions);
 
         let parsed_map = TileMap {
             position_offset: position,
@@ -217,6 +170,7 @@ impl TileMapLoader {
             layers: layers,
             tile_dimensions,
             map_dimensions,
+            drawable,
         };
 
         Ok(parsed_map)
@@ -227,8 +181,6 @@ impl TileMapLoader {
         gfx: &mut Graphics,
         map: tiled::Map,
         position: [f32; 2],
-        scale: f32,
-        camera: &Camera,
     ) -> Vec<TileMapLayer> {
         let mut result = Vec::new();
         for layer in map.layers() {
@@ -236,7 +188,8 @@ impl TileMapLoader {
             use tiled::TileLayer;
             match layer.layer_type() {
                 LayerType::Tiles(TileLayer::Finite(tile_layer)) => {
-                    let parsed_layer = self.load_tile_layer(gfx, tile_layer, position, scale, camera);
+                    let parsed_layer =
+                        self.load_tile_layer(gfx, tile_layer, position);
                     result.push(parsed_layer);
                 }
                 LayerType::Tiles(TileLayer::Infinite(_)) => {
@@ -266,8 +219,6 @@ impl TileMapLoader {
         gfx: &mut Graphics,
         tile_layer: FiniteTileLayer<'_>,
         position: [f32; 2],
-        scale: f32,
-        camera: &Camera,
     ) -> TileMapLayer {
         let mut parsed_tiles = Vec::new();
         let width = tile_layer.width();
@@ -278,7 +229,11 @@ impl TileMapLoader {
             for x in 0..width {
                 if let Some(tile) = tile_layer.get_tile(x as i32, y as i32) {
                     let tile_set = self.load_tileset(gfx, tile.get_tileset());
-                    if let Some(tile) = self.create_tile(gfx, [x as f32 + x_offset, y as f32 + y_offset], scale, tile, tile_set, camera) {
+                    if let Some(tile) = self.create_tile(
+                        [x as f32 + x_offset, y as f32 + y_offset],
+                        tile,
+                        tile_set,
+                    ) {
                         parsed_tiles.push(tile);
                     }
                 }
@@ -315,59 +270,21 @@ impl TileMapLoader {
 
     fn create_tile(
         &mut self,
-        gfx: &mut Graphics,
         position: [f32; 2],
-        scale: f32,
         tile: tiled::LayerTile,
         tile_set: Arc<TileSet>,
-        camera: &Camera,
     ) -> Option<Tile> {
         let set_tile = tile.get_tile()?;
         let tile_type = self.get_tile_type(&set_tile);
         let animation = self.get_animation(&set_tile);
         let tile_id = tile.id() as u32;
 
-        let [width, height] = [tile_set.tile_dimensions[0] as f32, tile_set.tile_dimensions[1] as f32];
-        let [x, y] = position;
-
-        let object_data = vert_tile2::ObjectData {
-            position: [x * width * scale, -y * height * scale],
-            dimensions: [width * scale, height * scale],
-            layer_idx: tile_id as f32,
-        };
-
-        let object_data = PushConstant::new(0, object_data, ShaderStages::VERTEX);
-
-        let texture_binding = TextureBinding::new(tile_set.texture.clone(), 1);
-
-        use crate::graphics::bindable::*;
-        let drawable = Drawable::new(
-            gfx,
-            vec![object_data.clone(), texture_binding.clone()],
-            || {
-                let mesh = Self::create_tile_mesh();
-                vec![
-                    VertexBuffer::new(gfx, mesh.vertices),
-                    IndexBuffer::new(gfx, mesh.indices),
-                    VertexShader::from_module(vert_tile2::load(gfx.get_device()).unwrap()),
-                    FragmentShader::from_module(
-                        frag_texture_array::load(gfx.get_device()).unwrap(),
-                    ),
-                    UniformBufferBinding::new(gfx.utils().cartesian_to_normalized(), 0),
-                    UniformBufferBinding::new(camera.uniform_buffer(), 2),
-                ]
-            },
-            6,
-        );
-
         Some(Tile {
             tile_type,
             animation,
             tile_set,
             tile_id,
-            drawable,
-            object_data,
-            texture_binding,
+            position,
         })
     }
 
@@ -422,4 +339,26 @@ pub struct TileAnimation {
     last_frame_time: std::time::Instant,
     current_frame_idx: u32,
     frames: Arc<[AnimationFrame]>,
+}
+
+pub struct TileMapDrawable {
+    drawables: Vec<Arc<Drawable>>,
+}
+
+impl TileMapDrawable {
+    pub fn new(
+        gfx: &mut Graphics,
+        position: [f32; 2],
+        scale: f32,
+        layers: &[TileMapLayer],
+        tile_dimensions: [u32; 2],
+    ) -> Self {
+        todo!()
+    }
+
+    pub fn draw(&self, gfx: &mut Graphics) {
+        self.drawables
+            .iter()
+            .for_each(|drawable| gfx.queue_drawable(drawable.clone()));
+    }
 }

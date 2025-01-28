@@ -35,7 +35,15 @@ impl App {
         let camera = Camera::new(gfx, [0.0, 0.0], 1.0, 0.0);
 
         let mut loader = TileMapLoader::new();
-        let tile_map = loader.load(gfx, "assets/tilemaps/ollemap.tmx", [-15.0, -10.0], 1.0, &camera).unwrap();
+        let tile_map = loader
+            .load(
+                gfx,
+                "assets/tilemaps/ollemap.tmx",
+                [-15.0, -10.0],
+                1.0,
+                &camera,
+            )
+            .unwrap();
 
         let player = CharacterController::new(gfx, &camera);
 
@@ -57,7 +65,7 @@ impl App {
         self.editor_camera_movement(input);
         //self.tile_map_loader.update();
         self.debug_window(gfx, delta_time);
-        self.tile_map.draw_all_layers(gfx);
+        self.tile_map.draw(gfx);
         self.player.draw(gfx);
         self.hotbar.draw(gfx, self.hotbar_slot - 1, 4.0);
         self.healthbar.draw(gfx, self.health_level, 4.0);
