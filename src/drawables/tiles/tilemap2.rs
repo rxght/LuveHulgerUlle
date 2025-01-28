@@ -32,30 +32,69 @@ struct Mesh {
     indices: Vec<u32>,
 }
 
-#[derive(Hash, Clone, PartialEq, Eq)]
-struct GroupInfo {
-    pub tile_set: Arc<TileSet>,
-    pub animation: Option<Arc<TileAnimation>>,
-}
-
 pub struct Tile {
     tile_type: Option<Arc<str>>,
     animation: Option<Arc<TileAnimation>>,
     tile_set: Arc<TileSet>,
     tile_id: u32,
-    position: [u32; 2],
     drawable: Arc<Drawable>,
     object_data: Arc<PushConstant<vert_tile2::ObjectData>>,
     texture_binding: Arc<TextureBinding>,
 }
 
-struct TileMapLayer {
+impl std::fmt::Debug for Tile {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.tile_type {
+            Some(tile_type) => f.write_fmt(format_args!("Tile: {}", tile_type)),
+            None => f.write_fmt(format_args!("Tile: {}", self.tile_id))
+        }
+        
+    }
+}
+
+impl Tile {
+    pub fn draw(&self, gfx: &mut Graphics) {
+        gfx.queue_drawable(self.drawable.clone());
+    }
+
+    pub fn set_tile_id(&mut self, tile_id: u32) {
+        self.tile_id = tile_id;
+        self.object_data.access_data(|data| data.layer_idx = tile_id as f32);
+    }
+
+    pub fn set_tile_position(&mut self, position: [u32; 2]) {
+        let [width, height] = self.tile_set.tile_dimensions;
+        let [x, y] = position;
+        self.object_data.access_data(|data| {
+            data.position = [(x * width) as f32, -1.0 * (y * height) as f32];
+        });
+    }
+    
+    pub fn set_tile_set(&mut self, tile_set: Arc<TileSet>) {
+        self.tile_set = tile_set;
+        self.texture_binding.set_texture(self.tile_set.texture.clone());
+        let [width, height] = self.tile_set.tile_dimensions;
+        self.object_data.access_data(|data| {
+            data.dimensions = [width as f32, height as f32];
+        });
+    }
+
+    pub fn set_animation(&mut self, animation: Option<Arc<TileAnimation>>) {
+        self.animation = animation;
+    }
+}
+
+pub struct TileMapLayer {
     tiles: Vec<Tile>,
 }
 
 impl TileMapLayer {
+    pub fn new(tiles: Vec<Tile>) -> Self {
+        Self { tiles }
+    }
+
     pub fn draw(&self, gfx: &mut Graphics) {
-        self.tiles.iter().for_each(|tile| gfx.queue_drawable(tile.drawable.clone()));
+        self.tiles.iter().for_each(|tile| tile.draw(gfx));
     }
 }
 
@@ -286,7 +325,6 @@ impl TileMapLoader {
             animation,
             tile_set,
             tile_id,
-            position,
             drawable,
             object_data,
             texture_binding,
@@ -340,7 +378,7 @@ struct AnimationFrame {
 }
 
 #[derive(Hash, PartialEq, Eq)]
-struct TileAnimation {
+pub struct TileAnimation {
     last_frame_time: std::time::Instant,
     current_frame_idx: u32,
     frames: Arc<[AnimationFrame]>,
