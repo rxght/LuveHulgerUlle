@@ -35,7 +35,7 @@ impl App {
         let camera = Camera::new(gfx, [0.0, 0.0], 1.0, 0.0);
 
         let mut loader = TileMapLoader::new();
-        let tile_map = loader.load(gfx, "assets/tilemaps/ollemap.tmx", &camera).unwrap();
+        let tile_map = loader.load(gfx, "assets/tilemaps/ollemap.tmx", [-15.0, -10.0], 1.0, &camera).unwrap();
 
         let player = CharacterController::new(gfx, &camera);
 

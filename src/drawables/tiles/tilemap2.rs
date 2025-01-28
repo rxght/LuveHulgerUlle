@@ -99,6 +99,8 @@ impl TileMapLayer {
 }
 
 pub struct TileMap {
+    position_offset: [f32; 2],
+    scale: f32,
     layers: Vec<TileMapLayer>,
     tile_dimensions: [u32; 2],
     map_dimensions: [u32; 2],
@@ -107,6 +109,34 @@ pub struct TileMap {
 impl TileMap {
     pub fn draw_all_layers(&self, gfx: &mut Graphics) {
         self.layers.iter().for_each(|layer| layer.draw(gfx));
+    }
+
+    pub fn dimensions(&self) -> [u32; 2] {
+        self.map_dimensions
+    }
+
+    pub fn tile_dimensions(&self) -> [u32; 2] {
+        self.tile_dimensions
+    }
+
+    pub fn layers(&self) -> &[TileMapLayer] {
+        &self.layers
+    }
+
+    pub fn scale(&self) -> f32 {
+        self.scale
+    }
+
+    pub fn set_scale(&mut self, scale: f32) {
+        self.scale = scale;
+    }
+
+    pub fn position(&self) -> [f32; 2] {
+        self.position_offset
+    }
+
+    pub fn set_position(&mut self, position: [f32; 2]) {
+        self.position_offset = position;
     }
 }
 
@@ -169,6 +199,8 @@ impl TileMapLoader {
         &mut self,
         gfx: &mut Graphics,
         path: impl AsRef<Path>,
+        position: [f32; 2],
+        scale: f32,
         camera: &Camera,
     ) -> Result<TileMap, Box<dyn Error>> {
         let mut loader = tiled::Loader::new();
@@ -177,9 +209,11 @@ impl TileMapLoader {
         let map_dimensions = [map.width, map.height];
         let tile_dimensions = [map.tile_width, map.tile_height];
 
-        let layers = self.load_layers(gfx, map, camera);
+        let layers = self.load_layers(gfx, map, position, scale, camera);
 
         let parsed_map = TileMap {
+            position_offset: position,
+            scale,
             layers: layers,
             tile_dimensions,
             map_dimensions,
@@ -192,6 +226,8 @@ impl TileMapLoader {
         &mut self,
         gfx: &mut Graphics,
         map: tiled::Map,
+        position: [f32; 2],
+        scale: f32,
         camera: &Camera,
     ) -> Vec<TileMapLayer> {
         let mut result = Vec::new();
@@ -200,7 +236,7 @@ impl TileMapLoader {
             use tiled::TileLayer;
             match layer.layer_type() {
                 LayerType::Tiles(TileLayer::Finite(tile_layer)) => {
-                    let parsed_layer = self.load_tile_layer(gfx, tile_layer, camera);
+                    let parsed_layer = self.load_tile_layer(gfx, tile_layer, position, scale, camera);
                     result.push(parsed_layer);
                 }
                 LayerType::Tiles(TileLayer::Infinite(_)) => {
@@ -229,17 +265,20 @@ impl TileMapLoader {
         &mut self,
         gfx: &mut Graphics,
         tile_layer: FiniteTileLayer<'_>,
+        position: [f32; 2],
+        scale: f32,
         camera: &Camera,
     ) -> TileMapLayer {
         let mut parsed_tiles = Vec::new();
         let width = tile_layer.width();
         let height = tile_layer.height();
+        let [x_offset, y_offset] = position;
 
         for y in 0..height {
             for x in 0..width {
                 if let Some(tile) = tile_layer.get_tile(x as i32, y as i32) {
                     let tile_set = self.load_tileset(gfx, tile.get_tileset());
-                    if let Some(tile) = self.create_tile(gfx, [x, y], tile, tile_set, camera) {
+                    if let Some(tile) = self.create_tile(gfx, [x as f32 + x_offset, y as f32 + y_offset], scale, tile, tile_set, camera) {
                         parsed_tiles.push(tile);
                     }
                 }
@@ -277,7 +316,8 @@ impl TileMapLoader {
     fn create_tile(
         &mut self,
         gfx: &mut Graphics,
-        position: [u32; 2],
+        position: [f32; 2],
+        scale: f32,
         tile: tiled::LayerTile,
         tile_set: Arc<TileSet>,
         camera: &Camera,
@@ -287,12 +327,12 @@ impl TileMapLoader {
         let animation = self.get_animation(&set_tile);
         let tile_id = tile.id() as u32;
 
-        let [width, height] = tile_set.tile_dimensions;
+        let [width, height] = [tile_set.tile_dimensions[0] as f32, tile_set.tile_dimensions[1] as f32];
         let [x, y] = position;
 
         let object_data = vert_tile2::ObjectData {
-            position: [(x * width) as f32, -1.0 * (y * height) as f32],
-            dimensions: [width as f32, height as f32],
+            position: [x * width * scale, -y * height * scale],
+            dimensions: [width * scale, height * scale],
             layer_idx: tile_id as f32,
         };
 
