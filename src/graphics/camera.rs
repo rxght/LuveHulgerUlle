@@ -1,9 +1,15 @@
 use std::sync::Arc;
 
 use cgmath::{Deg, Vector3};
-use vulkano::shader::ShaderStages;
+use vulkano::{buffer::BufferContents, shader::ShaderStages};
 
-use super::{bindable::UniformBuffer, shaders::vert_tile::CameraUbo, Graphics};
+use super::{bindable::UniformBuffer, Graphics};
+
+#[derive(Debug, Clone, Copy, BufferContents)]
+#[repr(C)]
+pub struct CameraUbo {
+    pub camera: [[f32; 4]; 4],
+}
 
 pub struct Camera {
     pub position: [f32; 2],
@@ -45,7 +51,7 @@ impl Camera {
 
     pub fn update_buffer(&mut self) {
         self.buffer.access_data(|data| {
-            data.camera = (cgmath::Matrix4::from_scale(self.zoom)
+            data.camera = (cgmath::Matrix4::from_nonuniform_scale(self.zoom, self.zoom, 1.0)
                 * cgmath::Matrix4::from_angle_z(Deg(self.rotation))
                 * cgmath::Matrix4::from_translation(Vector3::new(
                     -self.position[0],

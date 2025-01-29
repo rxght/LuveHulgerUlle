@@ -626,10 +626,7 @@ fn create_logical_device(
     (device, queues)
 }
 
-fn select_swapchain_format(
-    device: Arc<Device>,
-    surface: Arc<Surface>,
-) -> (Format, ColorSpace) {
+fn select_swapchain_format(device: Arc<Device>, surface: Arc<Surface>) -> (Format, ColorSpace) {
     let formats = device
         .physical_device()
         .surface_formats(surface.as_ref(), Default::default())
@@ -643,7 +640,7 @@ fn select_swapchain_format(
                 4 => score += 3,
                 8 => score += 2,
                 16 => score += 1,
-                _ => {},
+                _ => {}
             };
             if *format == Format::R8G8B8A8_SRGB {
                 score += 100;
@@ -653,9 +650,12 @@ fn select_swapchain_format(
             }
             match format.numeric_format_color() {
                 Some(NumericFormat::SRGB) => score += 2,
-                _ => {},
+                _ => {}
             }
-            println!("Format: {:?}, ColorSpace: {:?}, Score: {}", format, color_space, score);
+            println!(
+                "Format: {:?}, ColorSpace: {:?}, Score: {}",
+                format, color_space, score
+            );
             score
         })
         .unwrap_or(formats.first().unwrap());
