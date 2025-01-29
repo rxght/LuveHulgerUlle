@@ -41,7 +41,7 @@ impl App {
                 "assets/tilemaps/ollemap.tmx",
                 [-15.0, -10.0],
                 1.0,
-                &camera,
+                camera.uniform_buffer(),
             )
             .unwrap();
 
@@ -60,11 +60,23 @@ impl App {
     }
 
     pub fn run(&mut self, gfx: &mut Graphics, input: &Input, delta_time: Duration) {
+
+        if input.keyboard.is_key_pressed(18) {
+            let layers = self.tile_map.layers_mut();
+
+            for tile in layers[0].tiles_mut() {
+                if let Some(tile) = tile {
+                    tile.tile_id = (tile.tile_id + 1) % 32;
+                }
+            }
+        }
+
         self.player.update(input, delta_time);
         self.camera.position = *self.player.position();
         self.editor_camera_movement(input);
         //self.tile_map_loader.update();
         self.debug_window(gfx, delta_time);
+        self.tile_map.update(gfx);
         self.tile_map.draw(gfx);
         self.player.draw(gfx);
         self.hotbar.draw(gfx, self.hotbar_slot - 1, 4.0);

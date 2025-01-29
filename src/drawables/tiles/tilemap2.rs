@@ -11,8 +11,8 @@ use tiled::FiniteTileLayer;
 use vulkano::pipeline::graphics::vertex_input::Vertex;
 
 use crate::graphics::{
-    bindable::{IndexBuffer, Texture, TextureBinding, VertexBuffer},
-    camera::Camera,
+    bindable::{IndexBuffer, Texture, TextureBinding, UniformBuffer, VertexBuffer},
+    camera::CameraUbo,
     drawable::Drawable,
     shaders::{frag_texture_array, vert_tile3},
     Graphics,
@@ -47,6 +47,14 @@ impl TileMapLayer {
     pub fn new(tiles: Vec<Option<Tile>>) -> Self {
         Self { tiles }
     }
+
+    pub fn tiles(&self) -> &[Option<Tile>] {
+        &self.tiles
+    }
+
+    pub fn tiles_mut(&mut self) -> &mut Vec<Option<Tile>> {
+        &mut self.tiles
+    }
 }
 
 pub struct TileMap {
@@ -56,6 +64,8 @@ pub struct TileMap {
     tile_dimensions: [u32; 2],
     map_dimensions: [u32; 2],
 
+    camera: Arc<UniformBuffer<CameraUbo>>,
+    up_to_date: bool,
     drawable: TileMapDrawable,
 }
 
@@ -75,6 +85,11 @@ impl TileMap {
     pub fn layers(&self) -> &[TileMapLayer] {
         &self.layers
     }
+    
+    pub fn layers_mut(&mut self) -> &mut Vec<TileMapLayer> {
+        self.up_to_date = false;
+        &mut self.layers
+    }
 
     pub fn scale(&self) -> f32 {
         self.scale
@@ -82,6 +97,7 @@ impl TileMap {
 
     pub fn set_scale(&mut self, scale: f32) {
         self.scale = scale;
+        self.up_to_date = false;
     }
 
     pub fn position(&self) -> [f32; 2] {
@@ -90,6 +106,14 @@ impl TileMap {
 
     pub fn set_position(&mut self, position: [f32; 2]) {
         self.position_offset = position;
+        self.up_to_date = false;
+    }
+
+    pub fn update(&mut self, gfx: &mut Graphics) {
+        if !self.up_to_date {
+            self.up_to_date = true;
+            self.drawable = TileMapDrawable::new(gfx, self.position_offset, self.scale, &self.layers, self.map_dimensions, self.camera.clone());
+        }
     }
 }
 
@@ -154,7 +178,7 @@ impl TileMapLoader {
         path: impl AsRef<Path>,
         position: [f32; 2],
         scale: f32,
-        camera: &Camera,
+        camera: Arc<UniformBuffer<CameraUbo>>,
     ) -> Result<TileMap, Box<dyn Error>> {
         let mut loader = tiled::Loader::new();
         let map = loader.load_tmx_map(path.as_ref())?;
@@ -164,7 +188,7 @@ impl TileMapLoader {
 
         let layers = self.load_layers(gfx, map);
 
-        let drawable = TileMapDrawable::new(gfx, position, scale, &layers, map_dimensions, camera);
+        let drawable = TileMapDrawable::new(gfx, position, scale, &layers, map_dimensions, camera.clone());
 
         let parsed_map = TileMap {
             position_offset: position,
@@ -173,6 +197,8 @@ impl TileMapLoader {
             tile_dimensions,
             map_dimensions,
             drawable,
+            camera,
+            up_to_date: true,
         };
 
         Ok(parsed_map)
@@ -338,7 +364,7 @@ impl TileMapDrawable {
         scale: f32,
         layers: &[TileMapLayer],
         map_dimensions: [u32; 2],
-        camera: &Camera,
+        camera: Arc<UniformBuffer<CameraUbo>>,
     ) -> Self {
         // gruppera all tiles som använder samma tileset
         let mut grouped_tiles: HashMap<Arc<TileSet>, Vec<PositionedTile>> = HashMap::new();
@@ -360,7 +386,7 @@ impl TileMapDrawable {
         let mut drawable_groups = HashMap::new();
         for (tile_set, tiles) in grouped_tiles {
             let mesh = Self::create_mesh(tiles, &tile_set, position, scale);
-            let drawable = Self::create_drawable(gfx, &tile_set, mesh, camera);
+            let drawable = Self::create_drawable(gfx, &tile_set, mesh, camera.clone());
             drawable_groups.insert(tile_set, drawable);
         }
 
@@ -379,7 +405,7 @@ impl TileMapDrawable {
         gfx: &mut Graphics,
         tile_set: &TileSet,
         mesh: Mesh,
-        camera: &Camera,
+        camera: Arc<UniformBuffer<CameraUbo>>,
     ) -> TileGroupDrawable {
         let vertex_buffer = VertexBuffer::new(gfx, mesh.vertices);
         let index_count = mesh.indices.len() as u32;
@@ -401,7 +427,7 @@ impl TileMapDrawable {
                         frag_texture_array::load(gfx.get_device()).unwrap(),
                     ),
                     UniformBufferBinding::new(gfx.utils().cartesian_to_normalized(), 0),
-                    UniformBufferBinding::new(camera.uniform_buffer(), 2),
+                    UniformBufferBinding::new(camera, 2),
                 ]
             },
             index_count,

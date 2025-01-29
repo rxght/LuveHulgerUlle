@@ -1,9 +1,15 @@
 use std::sync::Arc;
 
 use cgmath::{Deg, Vector3};
-use vulkano::shader::ShaderStages;
+use vulkano::{buffer::BufferContents, shader::ShaderStages};
 
-use super::{bindable::UniformBuffer, shaders::vert_tile::CameraUbo, Graphics};
+use super::{bindable::UniformBuffer, Graphics};
+
+#[derive(Debug, Clone, Copy, BufferContents)]
+#[repr(C)]
+pub struct CameraUbo {
+    pub camera: [[f32; 4]; 4],
+}
 
 pub struct Camera {
     pub position: [f32; 2],
