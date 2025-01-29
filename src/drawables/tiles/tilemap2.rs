@@ -11,17 +11,20 @@ use tiled::FiniteTileLayer;
 use vulkano::pipeline::graphics::vertex_input::Vertex;
 
 use crate::graphics::{
-    bindable::Texture,
+    bindable::{IndexBuffer, Texture, TextureBinding, VertexBuffer},
     camera::Camera,
     drawable::Drawable,
+    shaders::{frag_texture_array, vert_tile3},
     Graphics,
 };
 
 #[derive(Vertex, bytemuck::Pod, Clone, Copy, bytemuck::Zeroable)]
 #[repr(C)]
 struct VertexT {
-    #[format(R32G32_SFLOAT)]
-    pos: [f32; 2],
+    #[format(R32G32B32_SFLOAT)]
+    pos: [f32; 3],
+    #[format(R32G32B32_SFLOAT)]
+    uv: [f32; 3],
 }
 
 struct Mesh {
@@ -32,17 +35,16 @@ struct Mesh {
 pub struct Tile {
     pub tile_type: Option<Arc<str>>,
     pub animation: Option<Arc<TileAnimation>>,
-    pub position: [f32; 2],
     pub tile_set: Arc<TileSet>,
     pub tile_id: u32,
 }
 
 pub struct TileMapLayer {
-    tiles: Vec<Tile>,
+    tiles: Vec<Option<Tile>>,
 }
 
 impl TileMapLayer {
-    pub fn new(tiles: Vec<Tile>) -> Self {
+    pub fn new(tiles: Vec<Option<Tile>>) -> Self {
         Self { tiles }
     }
 }
@@ -160,9 +162,9 @@ impl TileMapLoader {
         let map_dimensions = [map.width, map.height];
         let tile_dimensions = [map.tile_width, map.tile_height];
 
-        let layers = self.load_layers(gfx, map, position);
+        let layers = self.load_layers(gfx, map);
 
-        let drawable = TileMapDrawable::new(gfx, position, scale, &layers, tile_dimensions);
+        let drawable = TileMapDrawable::new(gfx, position, scale, &layers, map_dimensions, camera);
 
         let parsed_map = TileMap {
             position_offset: position,
@@ -176,20 +178,14 @@ impl TileMapLoader {
         Ok(parsed_map)
     }
 
-    fn load_layers(
-        &mut self,
-        gfx: &mut Graphics,
-        map: tiled::Map,
-        position: [f32; 2],
-    ) -> Vec<TileMapLayer> {
+    fn load_layers(&mut self, gfx: &mut Graphics, map: tiled::Map) -> Vec<TileMapLayer> {
         let mut result = Vec::new();
         for layer in map.layers() {
             use tiled::LayerType;
             use tiled::TileLayer;
             match layer.layer_type() {
                 LayerType::Tiles(TileLayer::Finite(tile_layer)) => {
-                    let parsed_layer =
-                        self.load_tile_layer(gfx, tile_layer, position);
+                    let parsed_layer = self.load_tile_layer(gfx, tile_layer);
                     result.push(parsed_layer);
                 }
                 LayerType::Tiles(TileLayer::Infinite(_)) => {
@@ -218,43 +214,27 @@ impl TileMapLoader {
         &mut self,
         gfx: &mut Graphics,
         tile_layer: FiniteTileLayer<'_>,
-        position: [f32; 2],
     ) -> TileMapLayer {
-        let mut parsed_tiles = Vec::new();
         let width = tile_layer.width();
         let height = tile_layer.height();
-        let [x_offset, y_offset] = position;
+        let tile_count = width as usize * height as usize;
 
+        let mut parsed_tiles = Vec::with_capacity(tile_count);
         for y in 0..height {
             for x in 0..width {
                 if let Some(tile) = tile_layer.get_tile(x as i32, y as i32) {
                     let tile_set = self.load_tileset(gfx, tile.get_tileset());
-                    if let Some(tile) = self.create_tile(
-                        [x as f32 + x_offset, y as f32 + y_offset],
-                        tile,
-                        tile_set,
-                    ) {
-                        parsed_tiles.push(tile);
+                    if let Some(tile) = self.create_tile(tile, tile_set) {
+                        parsed_tiles.push(Some(tile));
+                        continue;
                     }
                 }
+                parsed_tiles.push(None);
             }
         }
         TileMapLayer {
             tiles: parsed_tiles,
         }
-    }
-
-    fn create_tile_mesh() -> Mesh {
-        let vertices = vec![
-            VertexT { pos: [0.0, 0.0] },
-            VertexT { pos: [1.0, 0.0] },
-            VertexT { pos: [0.0, 1.0] },
-            VertexT { pos: [1.0, 1.0] },
-        ];
-
-        let indices = vec![0, 1, 2, 2, 1, 3];
-
-        Mesh { vertices, indices }
     }
 
     fn load_tileset(&mut self, gfx: &mut Graphics, set: &tiled::Tileset) -> Arc<TileSet> {
@@ -268,12 +248,7 @@ impl TileMapLoader {
         return arc;
     }
 
-    fn create_tile(
-        &mut self,
-        position: [f32; 2],
-        tile: tiled::LayerTile,
-        tile_set: Arc<TileSet>,
-    ) -> Option<Tile> {
+    fn create_tile(&mut self, tile: tiled::LayerTile, tile_set: Arc<TileSet>) -> Option<Tile> {
         let set_tile = tile.get_tile()?;
         let tile_type = self.get_tile_type(&set_tile);
         let animation = self.get_animation(&set_tile);
@@ -284,7 +259,6 @@ impl TileMapLoader {
             animation,
             tile_set,
             tile_id,
-            position,
         })
     }
 
@@ -341,8 +315,20 @@ pub struct TileAnimation {
     frames: Arc<[AnimationFrame]>,
 }
 
-pub struct TileMapDrawable {
-    drawables: Vec<Arc<Drawable>>,
+struct TileMapDrawable {
+    groups: HashMap<Arc<TileSet>, TileGroupDrawable>,
+}
+
+struct TileGroupDrawable {
+    drawable: Arc<Drawable>,
+    vertex_buffer: Arc<VertexBuffer<VertexT>>,
+    index_buffer: Arc<IndexBuffer>,
+    texture_binding: Arc<TextureBinding>,
+}
+
+struct PositionedTile<'a> {
+    tile: &'a Tile,
+    position: [u32; 3],
 }
 
 impl TileMapDrawable {
@@ -351,14 +337,132 @@ impl TileMapDrawable {
         position: [f32; 2],
         scale: f32,
         layers: &[TileMapLayer],
-        tile_dimensions: [u32; 2],
+        map_dimensions: [u32; 2],
+        camera: &Camera,
     ) -> Self {
-        todo!()
+        // gruppera all tiles som använder samma tileset
+        let mut grouped_tiles: HashMap<Arc<TileSet>, Vec<PositionedTile>> = HashMap::new();
+        for (layer_idx, layer) in layers.iter().enumerate() {
+            for (idx, tile) in layer.tiles.iter().enumerate() {
+                if let Some(tile) = tile {
+                    let x = idx as u32 % map_dimensions[0];
+                    let y = idx as u32 / map_dimensions[0];
+                    let position = [x, y, layer_idx as u32];
+                    let positioned_tile = PositionedTile { tile, position };
+                    grouped_tiles
+                        .entry(tile.tile_set.clone())
+                        .or_insert_with(Vec::new)
+                        .push(positioned_tile);
+                }
+            }
+        }
+
+        let mut drawable_groups = HashMap::new();
+        for (tile_set, tiles) in grouped_tiles {
+            let mesh = Self::create_mesh(tiles, &tile_set, position, scale);
+            let drawable = Self::create_drawable(gfx, &tile_set, mesh, camera);
+            drawable_groups.insert(tile_set, drawable);
+        }
+
+        TileMapDrawable {
+            groups: drawable_groups,
+        }
     }
 
     pub fn draw(&self, gfx: &mut Graphics) {
-        self.drawables
-            .iter()
-            .for_each(|drawable| gfx.queue_drawable(drawable.clone()));
+        for group in self.groups.values() {
+            gfx.queue_drawable(group.drawable.clone());
+        }
+    }
+
+    fn create_drawable(
+        gfx: &mut Graphics,
+        tile_set: &TileSet,
+        mesh: Mesh,
+        camera: &Camera,
+    ) -> TileGroupDrawable {
+        let vertex_buffer = VertexBuffer::new(gfx, mesh.vertices);
+        let index_count = mesh.indices.len() as u32;
+        let index_buffer = IndexBuffer::new(gfx, mesh.indices);
+        let texture_binding = TextureBinding::new(tile_set.texture.clone(), 1);
+
+        let drawable = Drawable::new(
+            gfx,
+            vec![
+                vertex_buffer.clone(),
+                index_buffer.clone(),
+                texture_binding.clone(),
+            ],
+            || {
+                use crate::graphics::bindable::*;
+                vec![
+                    VertexShader::from_module(vert_tile3::load(gfx.get_device()).unwrap()),
+                    FragmentShader::from_module(
+                        frag_texture_array::load(gfx.get_device()).unwrap(),
+                    ),
+                    UniformBufferBinding::new(gfx.utils().cartesian_to_normalized(), 0),
+                    UniformBufferBinding::new(camera.uniform_buffer(), 2),
+                ]
+            },
+            index_count,
+        );
+
+        TileGroupDrawable {
+            drawable,
+            vertex_buffer,
+            index_buffer,
+            texture_binding,
+        }
+    }
+
+    fn create_mesh<'a>(
+        tiles: Vec<PositionedTile<'a>>,
+        tile_set: &TileSet,
+        position: [f32; 2],
+        scale: f32,
+    ) -> Mesh {
+        let mut vertices = Vec::with_capacity(tiles.len() * 4);
+        let mut indices = Vec::with_capacity(tiles.len() * 6);
+
+        let [width, height] = tile_set.tile_dimensions;
+        let [x_offset, y_offset] = [position[0] * width as f32, position[1] * height as f32];
+
+        for tile in tiles {
+            let [x, y, z] = tile.position;
+            let tile = tile.tile;
+
+            let min_x = ((x * width) as f32 + x_offset) * scale;
+            let max_x = (((x + 1) * width) as f32 + x_offset) * scale;
+            let min_y = -(((y + 1) * height) as f32 + y_offset) * scale;
+            let max_y = -((y * height) as f32 + y_offset) * scale;
+
+            let z = -1.0 + 0.01 * z as f32;
+
+            let uv_z = tile.tile_id as f32;
+
+            let index_offset = vertices.len() as u32;
+            vertices.extend([
+                VertexT {
+                    pos: [min_x, min_y, z],
+                    uv: [0.0, 1.0, uv_z],
+                },
+                VertexT {
+                    pos: [min_x, max_y, z],
+                    uv: [0.0, 0.0, uv_z],
+                },
+                VertexT {
+                    pos: [max_x, min_y, z],
+                    uv: [1.0, 1.0, uv_z],
+                },
+                VertexT {
+                    pos: [max_x, max_y, z],
+                    uv: [1.0, 0.0, uv_z],
+                },
+            ]);
+
+            indices.extend([0, 1, 2, 2, 1, 3].into_iter().map(|i| i + index_offset));
+        }
+
+        Mesh { vertices, indices }
     }
 }

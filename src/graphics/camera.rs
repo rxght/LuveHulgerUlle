@@ -45,7 +45,7 @@ impl Camera {
 
     pub fn update_buffer(&mut self) {
         self.buffer.access_data(|data| {
-            data.camera = (cgmath::Matrix4::from_scale(self.zoom)
+            data.camera = (cgmath::Matrix4::from_nonuniform_scale(self.zoom, self.zoom, 1.0)
                 * cgmath::Matrix4::from_angle_z(Deg(self.rotation))
                 * cgmath::Matrix4::from_translation(Vector3::new(
                     -self.position[0],
