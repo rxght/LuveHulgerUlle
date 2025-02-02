@@ -1,4 +1,4 @@
-# Batako Todo:
+# Todo:
 
 ### Necessary fixes
 * Implement animations for tilemap2::TileMap
