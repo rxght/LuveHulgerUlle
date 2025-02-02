@@ -1,4 +1,8 @@
-# Todo:
+# Description
+
+This is an ongoing project towards making a game with rust and vulkan.
+
+# Todo
 
 ### Necessary fixes
 * Implement animations for tilemap2::TileMap
