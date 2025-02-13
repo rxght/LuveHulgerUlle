@@ -38,7 +38,7 @@ impl App {
         let tile_map = loader
             .load(
                 gfx,
-                "assets/tilemaps/ollemap.tmx",
+                "assets/tilemaps/animated.tmx",
                 [-15.0, -10.0],
                 1.0,
                 camera.uniform_buffer(),

@@ -1,10 +1,5 @@
 use std::{
-    collections::HashMap,
-    error::Error,
-    ffi::OsString,
-    hash::Hash,
-    path::Path,
-    sync::{Arc, Weak},
+    cell::UnsafeCell, collections::HashMap, error::Error, ffi::OsString, hash::Hash, path::Path, sync::{Arc, Weak}
 };
 
 use tiled::FiniteTileLayer;
@@ -34,7 +29,7 @@ struct Mesh {
 
 pub struct Tile {
     pub tile_type: Option<Arc<str>>,
-    pub animation: Option<Arc<TileAnimation>>,
+    pub animation: Option<Arc<UnsafeCell<TileAnimation>>>,
     pub tile_set: Arc<TileSet>,
     pub tile_id: u32,
 }
@@ -110,9 +105,30 @@ impl TileMap {
     }
 
     pub fn update(&mut self, gfx: &mut Graphics) {
+        self.update_animated_tiles();
         if !self.up_to_date {
             self.up_to_date = true;
             self.drawable = TileMapDrawable::new(gfx, self.position_offset, self.scale, &self.layers, self.map_dimensions, self.camera.clone());
+        }
+    }
+
+    fn update_animated_tiles(&mut self) {
+        let now = std::time::Instant::now();
+        for layer in self.layers.iter_mut() {
+            for tile in layer.tiles_mut() {
+                if let Some(tile) = tile {
+                    if let Some(animation) = tile.animation.as_ref() {
+                        let animation = unsafe { animation.get().as_mut().unwrap() };
+                        let elapsed = (now - animation.last_frame_time).as_millis() as u32;
+                        let frame_duration = animation.frames[animation.current_frame_idx as usize].duration;
+                        if elapsed > frame_duration {
+                            self.up_to_date = false;
+                            animation.current_frame_idx = (animation.current_frame_idx + 1) % animation.frames.len() as u32;
+                            animation.last_frame_time = now;
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -159,7 +175,7 @@ impl TileSet {
 
 pub struct TileMapLoader {
     loaded_tilesets: HashMap<OsString, Weak<TileSet>>,
-    animations: HashMap<Vec<AnimationFrame>, Weak<TileAnimation>>,
+    animations: HashMap<Vec<AnimationFrame>, Weak<UnsafeCell<TileAnimation>>>,
     tile_types: HashMap<String, Weak<str>>,
 }
 
@@ -298,7 +314,7 @@ impl TileMapLoader {
         return Some(arc);
     }
 
-    fn get_animation(&mut self, set_tile: &tiled::Tile<'_>) -> Option<Arc<TileAnimation>> {
+    fn get_animation(&mut self, set_tile: &tiled::Tile<'_>) -> Option<Arc<UnsafeCell<TileAnimation>>> {
         let frames = set_tile.animation.as_ref()?;
         let start_id = frames[0].tile_id;
         let parsed_frames: Vec<AnimationFrame> = frames
@@ -314,11 +330,11 @@ impl TileMapLoader {
         }
         let shared_frames: Arc<[AnimationFrame]> =
             Arc::from(parsed_frames.clone().into_boxed_slice());
-        let animation = Arc::new(TileAnimation {
+        let animation = Arc::new(UnsafeCell::new(TileAnimation {
             last_frame_time: std::time::Instant::now(),
             current_frame_idx: 0,
             frames: shared_frames,
-        });
+        }));
         let weak_animation = Arc::downgrade(&animation);
 
         self.animations.insert(parsed_frames, weak_animation);
@@ -407,6 +423,7 @@ impl TileMapDrawable {
         mesh: Mesh,
         camera: Arc<UniformBuffer<CameraUbo>>,
     ) -> TileGroupDrawable {
+        
         let vertex_buffer = VertexBuffer::new(gfx, mesh.vertices);
         let index_count = mesh.indices.len() as u32;
         let index_buffer = IndexBuffer::new(gfx, mesh.indices);
@@ -464,7 +481,14 @@ impl TileMapDrawable {
 
             let z = -1.0 + 0.01 * z as f32;
 
-            let uv_z = tile.tile_id as f32;
+            let animation_offset = if let Some(animation) = tile.animation.as_ref() {
+                let animation = unsafe { &*animation.get() };
+                animation.frames[animation.current_frame_idx as usize].frame_offset as f32
+            } else {
+                0.0
+            };
+
+            let uv_z = tile.tile_id as f32 + animation_offset;
 
             let index_offset = vertices.len() as u32;
             vertices.extend([

@@ -5,7 +5,7 @@ edition = "2021"
 
 [profile.dev]
 incremental = true
-opt-level = 1
+opt-level = 0
 
 [profile.release]
 incremental = true
