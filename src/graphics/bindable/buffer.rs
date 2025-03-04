@@ -1,4 +1,4 @@
-use std::{mem::align_of, sync::Arc};
+use std::{fmt::Result, mem::align_of, sync::Arc};
 
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
@@ -103,6 +103,24 @@ where
         Arc::new(Self {
             subbuffer: main_subbuffer,
         })
+    }
+
+    pub fn write(
+        &self,
+    ) -> core::result::Result<
+        vulkano::buffer::BufferWriteGuard<'_, [T]>,
+        vulkano::sync::HostAccessError,
+    > {
+        self.subbuffer.write()
+    }
+
+    pub fn read(
+        &self,
+    ) -> core::result::Result<
+        vulkano::buffer::BufferReadGuard<'_, [T]>,
+        vulkano::sync::HostAccessError,
+    > {
+        self.subbuffer.read()
     }
 }
 

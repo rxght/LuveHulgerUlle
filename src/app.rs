@@ -12,6 +12,7 @@ use egui_winit_vulkano::egui::Stroke;
 use egui_winit_vulkano::egui::Window;
 use hud::Healthbar;
 use hud::Hotbar;
+use std::sync::Arc;
 use std::time::Duration;
 
 mod character;
@@ -21,7 +22,7 @@ mod window;
 
 pub struct App {
     tile_map_loader: TileMapLoader,
-    tile_map: TileMap,
+    tile_map: Arc<TileMap>,
     player: CharacterController,
     camera: Camera,
     hotbar: Hotbar,
@@ -60,11 +61,8 @@ impl App {
     }
 
     pub fn run(&mut self, gfx: &mut Graphics, input: &Input, delta_time: Duration) {
-
         if input.keyboard.is_key_pressed(18) {
-            let layers = self.tile_map.layers_mut();
-
-            for tile in layers[0].tiles_mut() {
+            for tile in self.tile_map.layers_mut()[0].tiles_mut() {
                 if let Some(tile) = tile {
                     tile.tile_id = (tile.tile_id + 1) % 32;
                 }
@@ -74,9 +72,8 @@ impl App {
         self.player.update(input, delta_time);
         self.camera.position = *self.player.position();
         self.editor_camera_movement(input);
-        //self.tile_map_loader.update();
         self.debug_window(gfx, delta_time);
-        self.tile_map.update(gfx);
+        self.tile_map_loader.update(gfx);
         self.tile_map.draw(gfx);
         self.player.draw(gfx);
         self.hotbar.draw(gfx, self.hotbar_slot - 1, 4.0);
