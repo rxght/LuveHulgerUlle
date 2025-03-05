@@ -1,5 +1,5 @@
 use std::{
-    cell::{Cell, Ref, RefCell, RefMut, UnsafeCell},
+    cell::{Cell, Ref, RefCell, RefMut},
     collections::HashMap,
     error::Error,
     ffi::OsString,
@@ -67,12 +67,12 @@ pub struct TileMap {
 
     camera: RefCell<Arc<UniformBuffer<CameraUbo>>>,
     up_to_date: Cell<bool>,
-    drawable: UnsafeCell<TileMapDrawable>,
+    drawable: RefCell<TileMapDrawable>,
 }
 
 impl TileMap {
     pub fn draw(&self, gfx: &mut Graphics) {
-        unsafe { self.drawable.get().as_ref().unwrap().draw(gfx) };
+        self.drawable.borrow().draw(gfx);
     }
 
     pub fn dimensions(&self) -> [u32; 2] {
@@ -113,7 +113,7 @@ impl TileMap {
     fn update(&self, gfx: &mut Graphics) {
         if !self.up_to_date.get() {
             self.up_to_date.set(true);
-            let drawable = unsafe { self.drawable.get().as_mut().unwrap() };
+            let mut drawable = self.drawable.borrow_mut();
             *drawable = TileMapDrawable::new(
                 gfx,
                 self.position_offset.get(),
@@ -192,28 +192,32 @@ impl TileMapLoader {
                     }
                 }
             }
+            // this drop is necessary to avoid a deadlock
+            drop(read_mapping);
 
             if updated_ids.is_empty() {
                 continue;
             }
 
-            // this drop is necessary to avoid a deadlock
-            drop(read_mapping);
             let mut write_mapping = tile_set.animation_mapping.write();
             for (updated_id, value) in updated_ids.iter().cloned() {
                 write_mapping.0.insert(updated_id, value);
             }
 
             for tile_map in self.loaded_tilemaps.values().filter_map(|f| f.upgrade()) {
-                let drawable_groups = unsafe { &tile_map.drawable.get().as_ref().unwrap().groups };
+                let drawable_groups = &tile_map.drawable.borrow().groups;
                 if let Some(drawable) = drawable_groups.get(&tile_set) {
                     drawable.vertex_buffer.write(|vertices| {
                         for (idx, positioned_tile) in drawable.source_tiles.iter().enumerate() {
                             let tile = &positioned_tile.tile;
-    
+
                             for (updated_id, uv_z) in updated_ids.iter() {
                                 if tile.tile_id == *updated_id {
-                                    vertices[idx].uv[2] = *uv_z;
+                                    vertices[4 * idx + 0].uv[2] = *uv_z;
+                                    vertices[4 * idx + 1].uv[2] = *uv_z;
+                                    vertices[4 * idx + 2].uv[2] = *uv_z;
+                                    vertices[4 * idx + 3].uv[2] = *uv_z;
+                                    break;
                                 }
                             }
                         }
@@ -271,7 +275,7 @@ impl TileMapLoader {
             layers: RefCell::new(layers),
             tile_dimensions,
             map_dimensions,
-            drawable: UnsafeCell::new(drawable),
+            drawable: RefCell::new(drawable),
             camera: RefCell::new(camera),
             up_to_date: Cell::new(true),
         });

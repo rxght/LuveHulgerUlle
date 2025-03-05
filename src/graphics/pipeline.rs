@@ -85,8 +85,8 @@ impl PipelineBuilder {
                 depth_bias: None,
                 ..Default::default()
             },
-            depth_stencil_state: DepthStencilState{
-                depth: Some(DepthState{
+            depth_stencil_state: DepthStencilState {
+                depth: Some(DepthState {
                     write_enable: true,
                     compare_op: CompareOp::LessOrEqual,
                 }),

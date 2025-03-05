@@ -105,7 +105,7 @@ where
             .expect("Failed to execute command buffer.")
             .then_signal_fence_and_flush()
             .expect("Failed to flush command buffer.");
-        
+
         fence.wait(None).unwrap();
 
         Arc::new(Self {
@@ -231,7 +231,7 @@ where
             },
             AllocationCreateInfo {
                 memory_type_filter: MemoryTypeFilter::PREFER_HOST
-                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                    | MemoryTypeFilter::HOST_RANDOM_ACCESS,
                 ..Default::default()
             },
             vertices.into_iter(),
@@ -321,6 +321,5 @@ where
             Ok(fence) => fence.wait(None).unwrap(),
             Err(e) => println!("Failed to signal flush command buffer. {:?}", e),
         };
-
     }
 }
