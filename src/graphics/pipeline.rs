@@ -10,7 +10,7 @@ use vulkano::{
                 AttachmentBlend, BlendFactor, BlendOp, ColorBlendAttachmentState, ColorBlendState,
                 ColorComponents,
             },
-            depth_stencil::DepthStencilState,
+            depth_stencil::{CompareOp, DepthState, DepthStencilState},
             discard_rectangle::DiscardRectangleState,
             input_assembly::InputAssemblyState,
             multisample::MultisampleState,
@@ -85,7 +85,13 @@ impl PipelineBuilder {
                 depth_bias: None,
                 ..Default::default()
             },
-            depth_stencil_state: DepthStencilState::default(),
+            depth_stencil_state: DepthStencilState{
+                depth: Some(DepthState{
+                    write_enable: true,
+                    compare_op: CompareOp::LessOrEqual,
+                }),
+                ..Default::default()
+            },
             discard_rectangle_state: DiscardRectangleState::default(),
             multisample_state: MultisampleState::default(),
             tessellation_state: None,

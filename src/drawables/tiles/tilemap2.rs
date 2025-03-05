@@ -13,7 +13,7 @@ use tiled::FiniteTileLayer;
 use vulkano::pipeline::graphics::vertex_input::Vertex;
 
 use crate::graphics::{
-    bindable::{IndexBuffer, Texture, TextureBinding, UniformBuffer, VertexBuffer},
+    bindable::{IndexBuffer, Texture, TextureBinding, UniformBuffer, VertexBufferMut},
     camera::CameraUbo,
     drawable::Drawable,
     shaders::{frag_texture_array, vert_tile3},
@@ -205,33 +205,27 @@ impl TileMapLoader {
             }
 
             for tile_map in self.loaded_tilemaps.values().filter_map(|f| f.upgrade()) {
-                let drawable_groups =
-                    unsafe { &tile_map.drawable.get().as_ref().unwrap().groups };
+                let drawable_groups = unsafe { &tile_map.drawable.get().as_ref().unwrap().groups };
                 if let Some(drawable) = drawable_groups.get(&tile_set) {
-                    let mut vertex_buffer = match drawable.vertex_buffer.write() {
-                        Ok(buffer) => buffer,
-                        Err(e) => {
-                            println!("Failed to write vertex buffer: {:?}", e);
-                            continue;
-                        }
-                    };
-
-                    for (idx, positioned_tile) in drawable.source_tiles.iter().enumerate() {
-                        let tile = &positioned_tile.tile;
-
-                        for (updated_id, uv_z) in updated_ids.iter() {
-                            if tile.tile_id == *updated_id {
-                                vertex_buffer[idx].uv[2] = *uv_z;
+                    drawable.vertex_buffer.write(|vertices| {
+                        for (idx, positioned_tile) in drawable.source_tiles.iter().enumerate() {
+                            let tile = &positioned_tile.tile;
+    
+                            for (updated_id, uv_z) in updated_ids.iter() {
+                                if tile.tile_id == *updated_id {
+                                    vertices[idx].uv[2] = *uv_z;
+                                }
                             }
                         }
-                    }
+                    });
                 }
             }
         }
     }
 
     fn update_tilemap_drawables(&mut self, gfx: &mut Graphics) {
-        self.loaded_tilemaps.values()
+        self.loaded_tilemaps
+            .values()
             .filter_map(|f| f.upgrade())
             .for_each(|tile_map| tile_map.update(gfx));
     }
@@ -377,7 +371,7 @@ struct TileGroupDrawable {
     source_tiles: Vec<PositionedTile>,
 
     drawable: Arc<Drawable>,
-    vertex_buffer: Arc<VertexBuffer<VertexT>>,
+    vertex_buffer: Arc<VertexBufferMut<VertexT>>,
     index_buffer: Arc<IndexBuffer>,
     texture_binding: Arc<TextureBinding>,
 }
@@ -480,7 +474,7 @@ impl TileMapDrawable {
         source_tiles: Vec<PositionedTile>,
         camera: Arc<UniformBuffer<CameraUbo>>,
     ) -> TileGroupDrawable {
-        let vertex_buffer = VertexBuffer::new(gfx, mesh.vertices);
+        let vertex_buffer = VertexBufferMut::new(gfx, mesh.vertices);
         let index_count = mesh.indices.len() as u32;
         let index_buffer = IndexBuffer::new(gfx, mesh.indices);
         let texture_binding = TextureBinding::new(tile_set.texture.clone(), 1);
