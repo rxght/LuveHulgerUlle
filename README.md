@@ -6,7 +6,6 @@ This is an ongoing project towards making a game with rust and vulkan.
 
 ### Necessary fixes
 * Implement animations for tilemap2::TileMap
-* Add position offset and scale to TileMap struct
 
 ### Long Term
 * Add an inventory

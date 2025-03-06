@@ -8,4 +8,7 @@ layout(set = 1, binding = 0) uniform sampler2DArray tex;
 void main()
 {
     out_color = texture(tex, uv);
+    if (out_color.a == 0.0) {
+        discard;
+    }
 }

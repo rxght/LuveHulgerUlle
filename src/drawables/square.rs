@@ -49,7 +49,7 @@ impl Square {
                 ),
             ],
             || {
-                #[derive(BufferContents, Vertex)]
+                #[derive(BufferContents, Vertex, Clone)]
                 #[repr(C)]
                 struct Vertex {
                     #[format(R32G32_SFLOAT)]

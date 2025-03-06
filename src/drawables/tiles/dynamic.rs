@@ -12,7 +12,7 @@ use crate::graphics::{
     Graphics,
 };
 
-#[derive(BufferContents, Vertex)]
+#[derive(BufferContents, Vertex, Clone)]
 #[repr(C)]
 struct VertexT {
     #[format(R32G32_SFLOAT)]

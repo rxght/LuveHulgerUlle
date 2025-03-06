@@ -67,7 +67,7 @@ pub struct TileMapLoader {
     no_frame_offset_buffer: Arc<PushConstant<FrameData>>,
 }
 
-#[derive(BufferContents, Vertex)]
+#[derive(BufferContents, Vertex, Clone)]
 #[repr(C)]
 struct VertexT {
     #[format(R32G32_SFLOAT)]
