@@ -1,7 +1,7 @@
 mod dynamic;
-mod tilemap2;
+mod tilemap;
 
 #[allow(unused_imports)]
 pub use dynamic::*;
 #[allow(unused_imports)]
-pub use tilemap2::*;
+pub use tilemap::*;
