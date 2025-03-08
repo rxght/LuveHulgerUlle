@@ -5,6 +5,7 @@ This is an ongoing project towards making a game with rust and vulkan.
 # Todo
 
 ### Necessary fixes
+* Pipelines are always shared between all instances of a drawable, this doesn't work when different instances require different pipeline configurations.
 
 ### Long Term
 * Add an inventory

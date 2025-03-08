@@ -8,7 +8,7 @@ use crate::graphics::{
     bindable::{self, PushConstant, Texture, TextureBinding},
     camera::Camera,
     drawable::Drawable,
-    shaders::{frag_texture_array, vert_tile2},
+    shaders::{frag_texture_array, vert_dynamic_tile},
     Graphics,
 };
 
@@ -21,7 +21,7 @@ struct VertexT {
 
 pub struct DynamicTile {
     texture: Arc<TextureBinding>,
-    object_data: Arc<bindable::PushConstant<vert_tile2::ObjectData>>,
+    object_data: Arc<bindable::PushConstant<vert_dynamic_tile::ObjectData>>,
     drawable: Arc<Drawable>,
 }
 
@@ -31,7 +31,7 @@ impl DynamicTile {
 
         let object_data = bindable::PushConstant::new(
             0,
-            vert_tile2::ObjectData {
+            vert_dynamic_tile::ObjectData {
                 position: [0.0, 0.0],
                 dimensions: [tile_dimensions[0] as f32, tile_dimensions[1] as f32],
                 layer_idx: 0.0,
@@ -57,7 +57,7 @@ impl DynamicTile {
                     bindable::VertexBuffer::new(gfx, vertices),
                     bindable::IndexBuffer::new(gfx, indices),
                     bindable::VertexShader::from_module(
-                        vert_tile2::load(gfx.get_device()).unwrap(),
+                        vert_dynamic_tile::load(gfx.get_device()).unwrap(),
                     ),
                     bindable::FragmentShader::from_module(
                         frag_texture_array::load(gfx.get_device()).unwrap(),
@@ -110,7 +110,7 @@ impl DynamicTile {
         return dimensions;
     }
 
-    pub fn object_data(&self) -> &PushConstant<vert_tile2::ObjectData> {
+    pub fn object_data(&self) -> &PushConstant<vert_dynamic_tile::ObjectData> {
         &self.object_data
     }
 

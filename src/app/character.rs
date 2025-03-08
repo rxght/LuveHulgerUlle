@@ -1,9 +1,9 @@
 use std::{cmp::Ordering, f32::consts::SQRT_2, path::Path, sync::Arc, time::Duration};
 
 use crate::{
-    drawables::tiles::DynamicTile,
     graphics::{bindable::Texture, camera::Camera, Graphics},
     input::Input,
+    tiles::DynamicTile,
 };
 
 #[derive(Clone, Copy)]

@@ -1,8 +1,10 @@
-use crate::drawables::tiles::TileMap;
-use crate::drawables::tiles::TileMapLoader;
 use crate::graphics::camera::Camera;
 use crate::graphics::Graphics;
 use crate::input::Input;
+use crate::tiles::TileMap;
+use crate::tiles::TileMapLoader;
+use crate::utils;
+use crate::utils::Rect;
 use character::CharacterController;
 use egui_winit_vulkano::egui::epaint::Shadow;
 use egui_winit_vulkano::egui::Color32;
@@ -61,6 +63,11 @@ impl App {
     }
 
     pub fn run(&mut self, gfx: &mut Graphics, input: &Input, delta_time: Duration) {
+        
+        let top_left_quad = utils::common_meshes::rounded_rectangle::filled(Rect::new([0.0, 0.0], [128.0, 64.0]), 8.0);
+        let mesh_drawable = utils::mesh_drawable::MeshDrawable::new(gfx, top_left_quad, [1.0, 0.5, 0.5, 1.0], self.camera.uniform_buffer());
+        mesh_drawable.draw(gfx);
+        
         if input.keyboard.is_key_pressed(18) {
             for tile in self.tile_map.layers_mut()[0].tiles_mut() {
                 if let Some(tile) = tile {

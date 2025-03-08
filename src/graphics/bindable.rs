@@ -16,6 +16,7 @@ mod buffer;
 mod push_constant;
 mod shader;
 mod texture;
+mod topology;
 mod uniform;
 mod viewport;
 
@@ -23,10 +24,11 @@ pub use buffer::*;
 pub use push_constant::*;
 pub use shader::*;
 pub use texture::*;
+pub use topology::*;
 pub use uniform::*;
 pub use viewport::*;
 
-type CommandBufferBuilder = AutoCommandBufferBuilder<
+pub type CommandBufferBuilder = AutoCommandBufferBuilder<
     PrimaryAutoCommandBuffer<Arc<StandardCommandBufferAllocator>>,
     Arc<StandardCommandBufferAllocator>,
 >;

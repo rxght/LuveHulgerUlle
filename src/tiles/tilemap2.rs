@@ -10,34 +10,28 @@ use std::{
 
 use egui_winit_vulkano::egui::mutex::RwLock;
 use tiled::FiniteTileLayer;
-use vulkano::pipeline::graphics::vertex_input::Vertex;
 
-use crate::graphics::{
-    bindable::{IndexBuffer, Texture, TextureBinding, UniformBuffer, VertexBufferMut},
-    camera::CameraUbo,
-    drawable::Drawable,
-    shaders::{frag_texture_array, vert_tile3},
-    Graphics,
+use crate::{
+    graphics::{
+        bindable::{IndexBuffer, Texture, TextureBinding, UniformBuffer, VertexBufferMut},
+        camera::CameraUbo,
+        drawable::Drawable,
+        shaders::{frag_texture_array, vert_world_pos3_uv3},
+        Graphics,
+    },
+    utils::{vertex_types::VertexPos3Uv3, Mesh, MeshTopology, Rect},
 };
-
-#[derive(Vertex, bytemuck::Pod, Clone, Copy, bytemuck::Zeroable)]
-#[repr(C)]
-struct VertexT {
-    #[format(R32G32B32_SFLOAT)]
-    pos: [f32; 3],
-    #[format(R32G32B32_SFLOAT)]
-    uv: [f32; 3],
-}
-
-struct Mesh {
-    vertices: Vec<VertexT>,
-    indices: Vec<u32>,
-}
 
 #[derive(Clone)]
 pub struct Tile {
     pub tile_set: Arc<TileSet>,
     pub tile_id: u32,
+}
+
+impl Tile {
+    pub fn get_set_tile(&self) -> Option<tiled::Tile> {
+        self.tile_set.descriptor.get_tile(self.tile_id)
+    }
 }
 
 pub struct TileMapLayer {
@@ -62,9 +56,11 @@ pub struct TileMap {
     position_offset: Cell<[f32; 2]>,
     scale: Cell<f32>,
     layers: RefCell<Vec<TileMapLayer>>,
+    object_layers: Vec<tiled::LayerData>,
     tile_dimensions: [u32; 2],
     map_dimensions: [u32; 2],
 
+    hitboxes: RefCell<Vec<Rect>>,
     camera: RefCell<Arc<UniformBuffer<CameraUbo>>>,
     up_to_date: Cell<bool>,
     drawable: RefCell<TileMapDrawable>,
@@ -108,6 +104,57 @@ impl TileMap {
     pub fn set_position(&mut self, position: [f32; 2]) {
         self.position_offset.set(position);
         self.up_to_date.set(false);
+    }
+
+    pub fn object_layers(&self) -> &[tiled::LayerData] {
+        &self.object_layers
+    }
+
+    pub fn hitboxes(&self) -> Ref<Vec<Rect>> {
+        self.hitboxes.borrow()
+    }
+
+    fn calculate_hitboxes(&self) {
+        let drawable = self.drawable.borrow();
+        let mut hitboxes = self.hitboxes.borrow_mut();
+        for group_drawable in drawable.groups.values() {
+            let tiles = group_drawable.source_tiles.as_slice();
+
+            for pos_tile in tiles {
+                let set_tile = match pos_tile.tile.get_set_tile() {
+                    Some(v) => v,
+                    None => continue,
+                };
+
+                let collision = match &set_tile.collision {
+                    Some(v) => v,
+                    None => continue,
+                };
+
+                for object in collision.object_data() {
+                    match object.shape {
+                        tiled::ObjectShape::Rect { width, height } => {
+                            let shape_position = [object.x, object.y];
+                            let tile_position = [
+                                (pos_tile.position[0] * self.tile_dimensions[0]) as f32,
+                                (pos_tile.position[1] * self.tile_dimensions[1]) as f32,
+                            ];
+                            hitboxes.push(Rect {
+                                position: [
+                                    tile_position[0] + shape_position[0],
+                                    tile_position[1] + shape_position[1],
+                                ],
+                                dimensions: [width, height],
+                            });
+                        }
+                        _ => {
+                            println!("Only rectangle hitboxes are supported!");
+                            continue;
+                        }
+                    }
+                }
+            }
+        }
     }
 
     fn update(&self, gfx: &mut Graphics) {
@@ -258,6 +305,17 @@ impl TileMapLoader {
         let map_dimensions = [map.width, map.height];
         let tile_dimensions = [map.tile_width, map.tile_height];
 
+        let object_layers = map
+            .layers()
+            .filter_map(|layer| {
+                if let tiled::LayerType::Objects(_) = layer.layer_type() {
+                    Some((*layer).clone())
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+
         let layers = self.load_layers(gfx, map);
 
         let drawable = TileMapDrawable::new(
@@ -273,6 +331,8 @@ impl TileMapLoader {
             position_offset: Cell::new(position),
             scale: Cell::new(scale),
             layers: RefCell::new(layers),
+            hitboxes: RefCell::new(Vec::new()),
+            object_layers,
             tile_dimensions,
             map_dimensions,
             drawable: RefCell::new(drawable),
@@ -375,7 +435,7 @@ struct TileGroupDrawable {
     source_tiles: Vec<PositionedTile>,
 
     drawable: Arc<Drawable>,
-    vertex_buffer: Arc<VertexBufferMut<VertexT>>,
+    vertex_buffer: Arc<VertexBufferMut<VertexPos3Uv3>>,
     index_buffer: Arc<IndexBuffer>,
     texture_binding: Arc<TextureBinding>,
 }
@@ -474,7 +534,7 @@ impl TileMapDrawable {
     fn create_drawable(
         gfx: &mut Graphics,
         tile_set: Arc<TileSet>,
-        mesh: Mesh,
+        mesh: Mesh<VertexPos3Uv3>,
         source_tiles: Vec<PositionedTile>,
         camera: Arc<UniformBuffer<CameraUbo>>,
     ) -> TileGroupDrawable {
@@ -493,7 +553,7 @@ impl TileMapDrawable {
             || {
                 use crate::graphics::bindable::*;
                 vec![
-                    VertexShader::from_module(vert_tile3::load(gfx.get_device()).unwrap()),
+                    VertexShader::from_module(vert_world_pos3_uv3::load(gfx.get_device()).unwrap()),
                     FragmentShader::from_module(
                         frag_texture_array::load(gfx.get_device()).unwrap(),
                     ),
@@ -518,7 +578,7 @@ impl TileMapDrawable {
         tile_set: &tiled::Tileset,
         position: [f32; 2],
         scale: f32,
-    ) -> Mesh {
+    ) -> Mesh<VertexPos3Uv3> {
         let mut vertices = Vec::with_capacity(tiles.len() * 4);
         let mut indices = Vec::with_capacity(tiles.len() * 6);
 
@@ -561,19 +621,19 @@ impl TileMapDrawable {
 
             let index_offset = vertices.len() as u32;
             vertices.extend([
-                VertexT {
+                VertexPos3Uv3 {
                     pos: [min_x, min_y, z],
                     uv: [0.0, 1.0, uv_z],
                 },
-                VertexT {
+                VertexPos3Uv3 {
                     pos: [min_x, max_y, z],
                     uv: [0.0, 0.0, uv_z],
                 },
-                VertexT {
+                VertexPos3Uv3 {
                     pos: [max_x, min_y, z],
                     uv: [1.0, 1.0, uv_z],
                 },
-                VertexT {
+                VertexPos3Uv3 {
                     pos: [max_x, max_y, z],
                     uv: [1.0, 0.0, uv_z],
                 },
@@ -582,6 +642,6 @@ impl TileMapDrawable {
             indices.extend([0, 1, 2, 2, 1, 3].into_iter().map(|i| i + index_offset));
         }
 
-        Mesh { vertices, indices }
+        Mesh::new(vertices, indices, MeshTopology::TriangleList)
     }
 }
