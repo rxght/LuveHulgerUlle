@@ -2,8 +2,17 @@
 <tileset version="1.10" tiledversion="1.11.0" name="olletileset" tilewidth="16" tileheight="16" tilecount="80" columns="10">
  <image source="../textures/olletileset.png" width="160" height="128"/>
  <tile id="0" probability="0.9"/>
- <tile id="10" probability="0.03"/>
+ <tile id="10" probability="0.03">
+  <objectgroup draworder="index" id="2">
+   <object id="1" x="1" y="5" width="14" height="8"/>
+  </objectgroup>
+ </tile>
  <tile id="12" type="dirt"/>
+ <tile id="20">
+  <objectgroup draworder="index" id="2">
+   <object id="1" x="1" y="5" width="14" height="8"/>
+  </objectgroup>
+ </tile>
  <wangsets>
   <wangset name="Grass" type="corner" tile="-1">
    <wangcolor name="Grass" color="#ff0000" tile="-1" probability="1"/>

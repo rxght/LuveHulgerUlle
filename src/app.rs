@@ -3,8 +3,8 @@ use crate::graphics::Graphics;
 use crate::input::Input;
 use crate::tiles::TileMap;
 use crate::tiles::TileMapLoader;
-use crate::utils;
-use crate::utils::Rect;
+use crate::utils::common_meshes;
+use crate::utils::mesh_drawable::MeshDrawable;
 use character::CharacterController;
 use egui_winit_vulkano::egui::epaint::Shadow;
 use egui_winit_vulkano::egui::Color32;
@@ -26,6 +26,7 @@ pub struct App {
     tile_map_loader: TileMapLoader,
     tile_map: Arc<TileMap>,
     player: CharacterController,
+    squares: Vec<MeshDrawable>,
     camera: Camera,
     hotbar: Hotbar,
     healthbar: Healthbar,
@@ -41,8 +42,8 @@ impl App {
         let tile_map = loader
             .load(
                 gfx,
-                "assets/tilemaps/animated.tmx",
-                [-15.0, -10.0],
+                "assets/tilemaps/ollemap.tmx",
+                [0.0, 0.0],
                 1.0,
                 camera.uniform_buffer(),
             )
@@ -50,11 +51,19 @@ impl App {
 
         let player = CharacterController::new(gfx, &camera);
 
+        let mut squares = Vec::new();
+        let hitboxes_ref = tile_map.hitboxes();
+        for hitbox in hitboxes_ref.iter() {
+            squares.push(MeshDrawable::new(gfx, common_meshes::rounded_rectangle::outline(*hitbox, 2.0), [1.0; 4], camera.uniform_buffer()));
+        }
+        drop(hitboxes_ref);
+
         Self {
             tile_map_loader: loader,
             tile_map,
             player,
             camera,
+            squares,
             hotbar: Hotbar::new(gfx),
             healthbar: Healthbar::new(gfx),
             health_level: 20,
@@ -64,10 +73,8 @@ impl App {
 
     pub fn run(&mut self, gfx: &mut Graphics, input: &Input, delta_time: Duration) {
         
-        let top_left_quad = utils::common_meshes::rounded_rectangle::filled(Rect::new([0.0, 0.0], [128.0, 64.0]), 8.0);
-        let mesh_drawable = utils::mesh_drawable::MeshDrawable::new(gfx, top_left_quad, [1.0, 0.5, 0.5, 1.0], self.camera.uniform_buffer());
-        mesh_drawable.draw(gfx);
-        
+        self.squares.iter().for_each(|d| d.draw(gfx));
+
         if input.keyboard.is_key_pressed(18) {
             for tile in self.tile_map.layers_mut()[0].tiles_mut() {
                 if let Some(tile) = tile {

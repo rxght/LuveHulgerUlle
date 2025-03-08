@@ -117,6 +117,7 @@ impl TileMap {
     fn calculate_hitboxes(&self) {
         let drawable = self.drawable.borrow();
         let mut hitboxes = self.hitboxes.borrow_mut();
+        let [map_x, map_y] = self.position_offset.get();
         for group_drawable in drawable.groups.values() {
             let tiles = group_drawable.source_tiles.as_slice();
 
@@ -125,7 +126,6 @@ impl TileMap {
                     Some(v) => v,
                     None => continue,
                 };
-
                 let collision = match &set_tile.collision {
                     Some(v) => v,
                     None => continue,
@@ -135,14 +135,16 @@ impl TileMap {
                     match object.shape {
                         tiled::ObjectShape::Rect { width, height } => {
                             let shape_position = [object.x, object.y];
-                            let tile_position = [
+
+                            let [top_left_x, top_left_y] = [
                                 (pos_tile.position[0] * self.tile_dimensions[0]) as f32,
-                                (pos_tile.position[1] * self.tile_dimensions[1]) as f32,
+                                ((pos_tile.position[1] + 1) * self.tile_dimensions[1]) as f32,
                             ];
+
                             hitboxes.push(Rect {
                                 position: [
-                                    tile_position[0] + shape_position[0],
-                                    tile_position[1] + shape_position[1],
+                                    map_x + top_left_x + shape_position[0],
+                                    map_y + top_left_y - shape_position[1] - height,
                                 ],
                                 dimensions: [width, height],
                             });
@@ -340,6 +342,8 @@ impl TileMapLoader {
             up_to_date: Cell::new(true),
         });
 
+        parsed_map.calculate_hitboxes();
+
         self.loaded_tilemaps.insert(
             path.as_ref().as_os_str().to_os_string(),
             Arc::downgrade(&parsed_map),
@@ -492,13 +496,14 @@ impl TileMapDrawable {
         map_dimensions: [u32; 2],
         camera: Arc<UniformBuffer<CameraUbo>>,
     ) -> Self {
+
         // gruppera all tiles som använder samma tileset
         let mut grouped_tiles: HashMap<Arc<TileSet>, Vec<PositionedTile>> = HashMap::new();
         for (layer_idx, layer) in layers.iter().enumerate() {
             for (idx, tile) in layer.tiles.iter().enumerate() {
                 if let Some(tile) = tile {
                     let x = idx as u32 % map_dimensions[0];
-                    let y = idx as u32 / map_dimensions[0];
+                    let y = (map_dimensions[1] - 1) - idx as u32 / map_dimensions[0];
                     let position = [x, y, layer_idx as u32];
                     let positioned_tile = PositionedTile {
                         tile: tile.clone(),
@@ -583,7 +588,7 @@ impl TileMapDrawable {
         let mut indices = Vec::with_capacity(tiles.len() * 6);
 
         let [width, height] = [tile_set.tile_width, tile_set.tile_height];
-        let [x_offset, y_offset] = [position[0] * width as f32, position[1] * height as f32];
+        let [x_offset, y_offset] = position;
 
         for positioned_tile in tiles {
             let [x, y, z] = positioned_tile.position;
@@ -591,8 +596,8 @@ impl TileMapDrawable {
 
             let min_x = ((x * width) as f32 + x_offset) * scale;
             let max_x = (((x + 1) * width) as f32 + x_offset) * scale;
-            let min_y = -(((y + 1) * height) as f32 + y_offset) * scale;
-            let max_y = -((y * height) as f32 + y_offset) * scale;
+            let min_y = ((y * height) as f32 + y_offset) * scale;
+            let max_y = (((y + 1) * height) as f32 + y_offset) * scale;
 
             let z = -1.0 + 0.01 * z as f32;
 
