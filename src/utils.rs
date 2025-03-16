@@ -2,24 +2,11 @@ use std::collections::HashSet;
 
 use vulkano::pipeline::graphics::{input_assembly::PrimitiveTopology, vertex_input::Vertex};
 
+pub mod colliders;
 pub mod common_meshes;
+pub mod math;
 pub mod mesh_drawable;
 pub mod vertex_types;
-
-#[derive(PartialEq, Eq, Debug, Default, Clone, Copy)]
-pub struct Rect<P = f32, S = f32> {
-    pub position: [P; 2],
-    pub dimensions: [S; 2],
-}
-
-impl<P, S> Rect<P, S> {
-    pub fn new(position: [P; 2], dimensions: [S; 2]) -> Self {
-        Self {
-            position,
-            dimensions,
-        }
-    }
-}
 
 #[derive(Debug, Clone, Copy)]
 pub enum MeshTopology {

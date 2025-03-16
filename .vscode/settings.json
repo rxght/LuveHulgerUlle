@@ -16,5 +16,6 @@
     "glsllint.glslangValidatorArgs": [
         "-V"
     ],
-    "rust-analyzer.inlayHints.parameterHints.enable": false
+    "rust-analyzer.inlayHints.parameterHints.enable": false,
+    "lldb.script": { "lang.rust.toolchain": "stable-x86_64-pc-windows-gnu" }
 }

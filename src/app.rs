@@ -3,8 +3,7 @@ use crate::graphics::Graphics;
 use crate::input::Input;
 use crate::tiles::TileMap;
 use crate::tiles::TileMapLoader;
-use crate::utils::common_meshes;
-use crate::utils::mesh_drawable::MeshDrawable;
+use crate::utils::colliders::HitboxManager;
 use character::CharacterController;
 use egui_winit_vulkano::egui::epaint::Shadow;
 use egui_winit_vulkano::egui::Color32;
@@ -26,12 +25,12 @@ pub struct App {
     tile_map_loader: TileMapLoader,
     tile_map: Arc<TileMap>,
     player: CharacterController,
-    squares: Vec<MeshDrawable>,
     camera: Camera,
     hotbar: Hotbar,
     healthbar: Healthbar,
     health_level: u32,
     hotbar_slot: u32,
+    hitbox_manager: HitboxManager,
 }
 
 impl App {
@@ -51,11 +50,8 @@ impl App {
 
         let player = CharacterController::new(gfx, &camera);
 
-        let mut squares = Vec::new();
         let hitboxes_ref = tile_map.hitboxes();
-        for hitbox in hitboxes_ref.iter() {
-            squares.push(MeshDrawable::new(gfx, common_meshes::rounded_rectangle::outline(*hitbox, 2.0), [1.0; 4], camera.uniform_buffer()));
-        }
+        let hitbox_manager = HitboxManager::new(hitboxes_ref.iter().cloned(), [128.0, 128.0]);
         drop(hitboxes_ref);
 
         Self {
@@ -63,18 +59,15 @@ impl App {
             tile_map,
             player,
             camera,
-            squares,
             hotbar: Hotbar::new(gfx),
             healthbar: Healthbar::new(gfx),
             health_level: 20,
             hotbar_slot: 1,
+            hitbox_manager,
         }
     }
 
     pub fn run(&mut self, gfx: &mut Graphics, input: &Input, delta_time: Duration) {
-        
-        self.squares.iter().for_each(|d| d.draw(gfx));
-
         if input.keyboard.is_key_pressed(18) {
             for tile in self.tile_map.layers_mut()[0].tiles_mut() {
                 if let Some(tile) = tile {
@@ -83,15 +76,15 @@ impl App {
             }
         }
 
-        self.player.update(input, delta_time);
+        self.player.update(input, &self.hitbox_manager, delta_time);
         self.camera.position = *self.player.position();
         self.editor_camera_movement(input);
         self.debug_window(gfx, delta_time);
         self.tile_map_loader.update(gfx);
         self.tile_map.draw(gfx);
         self.player.draw(gfx);
-        self.hotbar.draw(gfx, self.hotbar_slot - 1, 4.0);
-        self.healthbar.draw(gfx, self.health_level, 4.0);
+        self.hotbar.draw(gfx, self.hotbar_slot - 1, 3.0);
+        self.healthbar.draw(gfx, self.health_level, 3.0);
     }
 
     fn editor_camera_movement(&mut self, input: &Input) {
@@ -116,7 +109,7 @@ impl App {
                     .stroke(Stroke::new(2.0, Color32::from_black_alpha(220)))
                     .shadow(Shadow {
                         extrusion: 5.0,
-                        color: Color32::from_black_alpha(100),
+                        color: Color32::from_black_alpha(180),
                     })
                     .rounding(5.0),
             )

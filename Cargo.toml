@@ -28,6 +28,8 @@ winit_glium = { package = "winit", version = "0.27.1"}
 tiled = "0.13.0"
 egui_winit_vulkano = "0.27.0"
 xml = "0.8.20"
+ordered-float = "5.0.0"
+num-traits = "0.2.19"
 
 [build-dependencies]
 shaderc = "0.8.3"

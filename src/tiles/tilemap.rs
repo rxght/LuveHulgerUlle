@@ -19,7 +19,7 @@ use crate::{
         shaders::{frag_texture_array, vert_world_pos3_uv3},
         Graphics,
     },
-    utils::{vertex_types::VertexPos3Uv3, Mesh, MeshTopology, Rect},
+    utils::{math::Rect, vertex_types::VertexPos3Uv3, Mesh, MeshTopology},
 };
 
 #[derive(Clone)]
@@ -142,11 +142,14 @@ impl TileMap {
                             ];
 
                             hitboxes.push(Rect {
-                                position: [
+                                min: [
                                     map_x + top_left_x + shape_position[0],
                                     map_y + top_left_y - shape_position[1] - height,
                                 ],
-                                dimensions: [width, height],
+                                max: [
+                                    map_x + top_left_x + shape_position[0] + width,
+                                    map_y + top_left_y - shape_position[1],
+                                ],
                             });
                         }
                         _ => {
@@ -496,7 +499,6 @@ impl TileMapDrawable {
         map_dimensions: [u32; 2],
         camera: Arc<UniformBuffer<CameraUbo>>,
     ) -> Self {
-
         // gruppera all tiles som använder samma tileset
         let mut grouped_tiles: HashMap<Arc<TileSet>, Vec<PositionedTile>> = HashMap::new();
         for (layer_idx, layer) in layers.iter().enumerate() {

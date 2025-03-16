@@ -28,7 +28,12 @@ impl MeshDrawable {
         let vb = bindable::VertexBuffer::new(gfx, mesh.vertices);
         let ib = bindable::IndexBuffer::new(gfx, mesh.indices);
         let topology = mesh.topology;
-        let color_buffer = UniformBuffer::new(gfx, 0, frag_color::ColorData{ color }, ShaderStages::FRAGMENT);
+        let color_buffer = UniformBuffer::new(
+            gfx,
+            0,
+            frag_color::ColorData { color },
+            ShaderStages::FRAGMENT,
+        );
 
         let base_drawable = Drawable::new(
             gfx,

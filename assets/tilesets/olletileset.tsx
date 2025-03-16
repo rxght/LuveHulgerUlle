@@ -13,6 +13,11 @@
    <object id="1" x="1" y="5" width="14" height="8"/>
   </objectgroup>
  </tile>
+ <tile id="37">
+  <objectgroup draworder="index" id="2">
+   <object id="1" x="1" y="4" width="14" height="11"/>
+  </objectgroup>
+ </tile>
  <wangsets>
   <wangset name="Grass" type="corner" tile="-1">
    <wangcolor name="Grass" color="#ff0000" tile="-1" probability="1"/>

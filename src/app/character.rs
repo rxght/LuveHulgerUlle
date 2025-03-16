@@ -4,6 +4,10 @@ use crate::{
     graphics::{bindable::Texture, camera::Camera, Graphics},
     input::Input,
     tiles::DynamicTile,
+    utils::{
+        colliders::HitboxManager,
+        math::{Rect, Vec2},
+    },
 };
 
 #[derive(Clone, Copy)]
@@ -81,7 +85,7 @@ impl CharacterController {
         &mut self.position
     }
 
-    pub fn update(&mut self, input: &Input, delta_time: Duration) {
+    pub fn update(&mut self, input: &Input, hitbox_manager: &HitboxManager, delta_time: Duration) {
         let mut x_movement = 0;
         let mut y_movement = 0;
         if input.keyboard.is_key_held(17).is_some() {
@@ -163,16 +167,25 @@ impl CharacterController {
             movement_amount = delta_time.as_secs_f32() * movement_speed;
         }
 
-        let [x_pos, y_pos] = &mut self.position;
+        let pos = Vec2::from(self.position);
+        let hitbox = Rect::new(*(pos + Vec2::new(-8.0, -8.0)), *(pos + Vec2::new(8.0, 8.0)));
+        let movement = Vec2::new(
+            x_movement as f32 * movement_amount,
+            y_movement as f32 * movement_amount,
+        );
 
-        *x_pos += x_movement as f32 * movement_amount;
-        *y_pos += y_movement as f32 * movement_amount;
+        let corrected_movement = hitbox_manager.moving_hit_test(hitbox, movement);
+
+        self.position = *(pos + corrected_movement);
 
         let [width, height] = self.tile_renderer.dimensions();
 
         self.tile_renderer.object_data().access_data(|data| {
             data.layer_idx = frame_idx as f32;
-            data.position = [*x_pos - width * 0.5, *y_pos + height * 0.2];
+            data.position = [
+                self.position[0] - width * 0.5,
+                self.position[1] + height * 0.2,
+            ];
         });
 
         self.tile_renderer
