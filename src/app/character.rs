@@ -168,7 +168,7 @@ impl CharacterController {
         }
 
         let pos = Vec2::from(self.position);
-        let hitbox = Rect::new(*(pos + Vec2::new(-8.0, -8.0)), *(pos + Vec2::new(8.0, 8.0)));
+        let hitbox = Rect::new(*(pos + Vec2::new(-6.0, -40.0)), *(pos + Vec2::new(6.0, -28.0)));
         let movement = Vec2::new(
             x_movement as f32 * movement_amount,
             y_movement as f32 * movement_amount,
