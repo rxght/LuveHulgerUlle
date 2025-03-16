@@ -18,3 +18,4 @@ Should probably remake the Drawable system to create additional pipeline objects
 * Split tile maps into chunks and only render chunks that are visible. (This may be slower in some cases and may only be useful for really large maps)
 * Add push descriptor functionality for textures.
 * Minimize use of egui widgets. Check how much gpu bandwidth is used by egui widgets to see if it's even necessary.
+* src/graphics/bindable/uniform.rs looks like it needs to be rewritten.
