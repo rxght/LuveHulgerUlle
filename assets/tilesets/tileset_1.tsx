@@ -3,7 +3,22 @@
  <image source="../textures/tileset_1.png" width="112" height="112"/>
  <tile id="4" probability="0.1"/>
  <tile id="6" probability="0.01"/>
+ <tile id="10">
+  <objectgroup draworder="index" id="2">
+   <object id="1" x="1" y="3" width="14" height="9"/>
+  </objectgroup>
+ </tile>
+ <tile id="11">
+  <objectgroup draworder="index" id="2">
+   <object id="1" x="1" y="3" width="14" height="9"/>
+  </objectgroup>
+ </tile>
  <tile id="12" probability="0.01"/>
+ <tile id="22">
+  <objectgroup draworder="index" id="2">
+   <object id="1" x="1" y="0" width="14" height="9"/>
+  </objectgroup>
+ </tile>
  <wangsets>
   <wangset name="GrassDirt" type="corner" tile="-1">
    <wangcolor name="Grass" color="#ff0000" tile="-1" probability="1"/>
